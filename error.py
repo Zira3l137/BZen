@@ -41,13 +41,10 @@ class Result(ABC, Generic[T, E]):
     @abstractmethod
     def expect(self, message: str) -> T: ...
 
-    @abstractmethod
-    def error(self) -> E: ...
-
 
 @dataclass(frozen=True, slots=True)
 class Ok(Result[T, E]):
-    _value: T
+    value: T
 
     def is_ok(self) -> bool:
         return True
@@ -56,39 +53,36 @@ class Ok(Result[T, E]):
         return False
 
     def unwrap(self) -> T:
-        return self._value
+        return self.value
 
     def unwrap_or(self, default: T) -> T:
-        return self._value
+        return self.value
 
     def unwrap_or_else(self, op: Callable[[E], T]) -> T:
-        return self._value
+        return self.value
 
     def expect(self, message: str) -> T:
-        return self._value
+        return self.value
 
     def map(self, func: Callable[[T], T2]) -> "Ok[T2, E]":
-        return Ok(func(self._value))
+        return Ok(func(self.value))
 
     def map_err(self, func: Callable[[E], E2]) -> "Ok[T, E2]":
-        return Ok(self._value)
+        return Ok(self.value)
 
     def and_then(self, func: Callable[[T], "Result[T2, E]"]) -> "Result[T2, E]":
-        return func(self._value)
-
-    def error(self) -> E:
-        raise UnwrapError("Tried to unwrap error from Ok")
+        return func(self.value)
 
     def __repr__(self):
-        return f"Ok({self._value})"
+        return f"Ok({self.value})"
 
     def __str__(self):
-        return str(self._value)
+        return str(self.value)
 
 
 @dataclass(frozen=True, slots=True)
 class Err(Result[T, E]):
-    _error: E
+    error: E
 
     def is_ok(self) -> bool:
         return False
@@ -97,36 +91,33 @@ class Err(Result[T, E]):
         return True
 
     def unwrap(self) -> T:
-        if isinstance(self._error, Exception):
-            raise self._error
-        raise UnwrapError(str(self._error))
+        if isinstance(self.error, Exception):
+            raise self.error
+        raise UnwrapError(str(self.error))
 
     def unwrap_or(self, default: T) -> T:
         return default
 
     def unwrap_or_else(self, op: Callable[[E], T]) -> T:
-        return op(self._error)
+        return op(self.error)
 
     def expect(self, message: str) -> T:
         raise UnwrapError(message)
 
     def map(self, func: Callable[[T], T2]) -> "Err[T2, E]":
-        return Err(self._error)
+        return Err(self.error)
 
     def map_err(self, func: Callable[[E], E2]) -> "Err[T, E2]":
-        return Err(func(self._error))
+        return Err(func(self.error))
 
     def and_then(self, func: Callable[[T], "Result[T2, E]"]) -> "Err[T2, E]":
-        return Err(self._error)
-
-    def error(self) -> E:
-        return self._error
+        return Err(self.error)
 
     def __repr__(self):
-        return f"Err({self._error})"
+        return f"Err({self.error})"
 
     def __str__(self):
-        return str(self._error)
+        return str(self.error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +140,14 @@ class Option(Generic[T]):
 
     def unwrap_or_else(self, op: Callable[[], T]) -> T:
         return self._value if self._value is not None else op()
+
+    def unwrap_or_none(self) -> Optional[T]:
+        return self._value if self._value is not None else None
+
+    def expect(self, message: str) -> T:
+        if self._value is None:
+            raise UnwrapError(message)
+        return self._value
 
     def map(self, func: Callable[[T], T2]) -> "Option[T2]":
         if self.is_some():
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     assert err_result.is_err()
     assert err_result.unwrap_or(123) == 123
     assert err_result.map(lambda x: x * 10).is_err()
-    assert err_result.map_err(lambda e: e.upper())._error == "FAIL"
+    assert err_result.map_err(lambda e: e.upper()).error == "FAIL"
 
     # --- Exception Test ---
     try:
