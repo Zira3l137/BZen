@@ -9,7 +9,8 @@ E2 = TypeVar("E2")
 
 
 class UnwrapError(Exception):
-    pass
+    def __init__(self, message: str, *args, **kwargs):
+        super().__init__(message, *args, **kwargs)
 
 
 class Result(ABC, Generic[T, E]):
@@ -37,6 +38,12 @@ class Result(ABC, Generic[T, E]):
     @abstractmethod
     def and_then(self, func: Callable[[T], "Result[T2, E]"]) -> "Result[T2, E]": ...
 
+    @abstractmethod
+    def expect(self, message: str) -> T: ...
+
+    @abstractmethod
+    def error(self) -> E: ...
+
 
 @dataclass(frozen=True, slots=True)
 class Ok(Result[T, E]):
@@ -57,6 +64,9 @@ class Ok(Result[T, E]):
     def unwrap_or_else(self, op: Callable[[E], T]) -> T:
         return self._value
 
+    def expect(self, message: str) -> T:
+        return self._value
+
     def map(self, func: Callable[[T], T2]) -> "Ok[T2, E]":
         return Ok(func(self._value))
 
@@ -65,6 +75,9 @@ class Ok(Result[T, E]):
 
     def and_then(self, func: Callable[[T], "Result[T2, E]"]) -> "Result[T2, E]":
         return func(self._value)
+
+    def error(self) -> E:
+        raise UnwrapError("Tried to unwrap error from Ok")
 
     def __repr__(self):
         return f"Ok({self._value})"
@@ -94,6 +107,9 @@ class Err(Result[T, E]):
     def unwrap_or_else(self, op: Callable[[E], T]) -> T:
         return op(self._error)
 
+    def expect(self, message: str) -> T:
+        raise UnwrapError(message)
+
     def map(self, func: Callable[[T], T2]) -> "Err[T2, E]":
         return Err(self._error)
 
@@ -102,6 +118,9 @@ class Err(Result[T, E]):
 
     def and_then(self, func: Callable[[T], "Result[T2, E]"]) -> "Err[T2, E]":
         return Err(self._error)
+
+    def error(self) -> E:
+        return self._error
 
     def __repr__(self):
         return f"Err({self._error})"
