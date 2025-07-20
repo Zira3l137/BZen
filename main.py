@@ -1,7 +1,7 @@
 import subprocess
 import sys
 from argparse import ArgumentError, ArgumentParser
-from logging import error, info
+from logging import error
 from pathlib import Path
 from typing import Any, Dict
 
