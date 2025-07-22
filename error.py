@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Generic, Optional, TypeVar
+from typing import Callable, Generic, Optional, Self, TypeVar
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -19,6 +19,9 @@ class Result(ABC, Generic[T, E]):
 
     @abstractmethod
     def is_err(self) -> bool: ...
+
+    @abstractmethod
+    def is_certain_err(self, type: type) -> bool: ...
 
     @abstractmethod
     def unwrap(self) -> T: ...
@@ -50,6 +53,9 @@ class Ok(Result[T, E]):
         return True
 
     def is_err(self) -> bool:
+        return False
+
+    def is_certain_err(self, type: type) -> bool:
         return False
 
     def unwrap(self) -> T:
@@ -89,6 +95,9 @@ class Err(Result[T, E]):
 
     def is_err(self) -> bool:
         return True
+
+    def is_certain_err(self, type: type) -> bool:
+        return isinstance(self.error, type)
 
     def unwrap(self) -> T:
         if isinstance(self.error, Exception):
