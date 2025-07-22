@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Generic, Optional, Self, TypeVar
+from typing import Callable, Generic, Optional, TypeVar
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
