@@ -11,6 +11,6 @@ if (-not (Test-Path .\venv))
     . .\venv\Scripts\activate
 }
 
-.\python\python.exe .\main.py .\res\NewWorld_Part_City_01.zen "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe" "F:/Games/Gothic II" -o "C:/Users/Pttychka-Admin/Desktop/test.blend" -v 3
+.\python\python.exe .\main.py .\res\NewWorld_Part_Ship_01.zen "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe" "F:/Games/Gothic II" -o "C:/Users/Pttychka-Admin/Desktop/test.blend" -v 3
 
 . .\venv\Scripts\deactivate

@@ -1,14 +1,13 @@
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
-from logging import error, info, warning
+from logging import error, info
 from os import scandir
 from pathlib import Path
 from typing import Callable, Dict, List, Tuple, TypeAlias
 
-from mathutils import Vector
-from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
-                    MultiResolutionMesh, Vfs, VfsNode, VirtualObject,
-                    VisualType, World)
+from mathutils import Matrix, Vector
+from zenkit import Model, ModelHierarchy, ModelMesh, MorphMesh, MultiResolutionMesh, Vfs, VfsNode, VirtualObject, World
 
 from error import Err, Ok, Option, Result, none, some
 from exceptions import NoVisualDataException, UnknownExtensionException
@@ -35,6 +34,9 @@ compiled = {
     "mds": VisualExtension.MDM,
     "mms": VisualExtension.MMB,
 }
+
+BASE_SCALE_MATRIX = Matrix().Scale(-1, 4, Vector((0, 1, 0)))
+BASE_ROTATION_MATRIX = Matrix().Rotation(math.radians(-90), 4, Vector((1, 0, 0)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,33 +157,34 @@ def parse_visual_data(
             return Err(UnknownExtensionException(f"unknown visual extension: {extension}"))
 
         compiled_name = with_suffix(name, compiled[extension], True).lower()
-        match obj.visual.type:
+        if "level" in obj.name.lower():
+            return Ok(MeshData([], [], [], [], []))
 
-            case VisualType.MULTI_RESOLUTION_MESH:
+        match extension:
+
+            case "3ds":
                 mrm = cache[compiled_name]().unwrap()
-                return parse_multi_resolution_mesh(mrm, scale).map_err(lambda err: NoVisualDataException(str(err)))  # type: ignore
+                return parse_multi_resolution_mesh(mrm, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
 
-            case VisualType.MESH:
-                return Ok(MeshData([], [], [], [], []))
-                # mdm = cache[compiled_name]().unwrap()
-                # mdh = cache[with_suffix(name, "mdh", True)]().unwrap()
-                # return parse_mesh(mdm, mdh, scale).map_err(lambda err: NoVisualDataException(str(err)))  # type: ignore
+            case "mds":
+                mdm = cache[compiled_name]().unwrap()
+                mdh = cache[with_suffix(name, "mdh", True).lower()]().unwrap()
+                return parse_mesh(mdm, mdh, scale).map_err(lambda err: err)  # type: ignore
 
-            case VisualType.MODEL:
-                return Ok(MeshData([], [], [], [], []))
-                # mdl = cache[compiled_name]().unwrap()
-                # return parse_model(mdl, scale).map_err(lambda err: NoVisualDataException(str(err)))  # type: ignore
+            case "asc":
+                mdl = cache[compiled_name]().unwrap()
+                return parse_model(mdl, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
 
-            case VisualType.MORPH_MESH:
+            case "mms":
                 mmb = cache[compiled_name]().unwrap()
-                return parse_morph_mesh(mmb, scale).map_err(lambda err: NoVisualDataException(str(err)))  # type: ignore
+                return parse_morph_mesh(mmb, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
 
             case _:
                 return Err(NoVisualDataException(f"unknown visual type: {obj.visual.type}"))
 
     except Exception as e:
         error(f"Failed to parse visual data")
-        return Err(NoVisualDataException(str(e)))
+        return Err(NoVisualDataException(e.__repr__()))
 
 
 def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Exception]:
@@ -264,7 +267,7 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
                         face_index = len(vertices)
                         face_indices.append(face_index)
 
-                        vertices.append(blender_pos)
+                        vertices.append(Vector(blender_pos))
                         vertex_cache[pos_hash] = face_index
                     else:
                         face_indices.append(vertex_cache[pos_hash])
@@ -273,23 +276,118 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
                 material_indices.append(submesh_index)
                 faces.append(face_indices)
 
-        return Ok(MeshData(vertices, faces, normals, uvs, materials, material_indices))
-
     except Exception as e:
         error("Failed to parse multi-resolution mesh")
         return Err(e)
 
+    return Ok(MeshData(vertices, faces, normals, uvs, materials, material_indices))
 
-# TODO: Implement
+
+def parse_mesh_attachments(
+    mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01
+) -> Result[Tuple[MeshData, Tuple[int, int]], Exception]:
+    try:
+        nodes = mdh.nodes
+        attachments = mdm.attachments
+        vertices, faces, normals, uvs, materials, material_indices = [], [], [], [], [], []
+        vertex_offset, material_offset = 0, 0
+        buffer = {}
+
+        for index, node in enumerate(nodes):
+            if node.name not in attachments:
+                continue
+
+            attachment = attachments[node.name]
+            mesh = parse_multi_resolution_mesh(attachment, scale).unwrap()
+
+            node_transform = node.transform
+            node_matrix = Matrix(
+                [
+                    [col.x for col in node_transform.columns[:3]],
+                    [col.y for col in node_transform.columns[:3]],
+                    [col.z for col in node_transform.columns[:3]],
+                ]
+            ).to_4x4()
+
+            translation = (
+                Vector((node_transform.columns[3].x, node_transform.columns[3].y, node_transform.columns[3].z)) * scale
+            )
+            node_matrix.translation = translation
+            world_matrix = Matrix()
+
+            if node.parent != -1 and node.parent in buffer:
+                parent_transform = buffer[node.parent]
+                world_matrix = parent_transform @ node_matrix
+            else:
+                world_matrix = BASE_ROTATION_MATRIX @ BASE_SCALE_MATRIX @ node_matrix
+
+            buffer[index] = world_matrix
+            world_matrix = world_matrix @ BASE_ROTATION_MATRIX @ BASE_SCALE_MATRIX
+
+            vertices_relative_to_parent = [world_matrix @ vertex for vertex in mesh.vertices]
+
+            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
+            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
+            materials.extend(mesh.materials)
+            vertices.extend(vertices_relative_to_parent)
+            normals.extend(mesh.normals)
+            uvs.extend(mesh.uvs)
+
+            vertex_offset += len(mesh.vertices)
+            material_offset += len(mesh.materials)
+
+    except Exception as e:
+        error("Failed to parse mesh attachments.")
+        return Err(e)
+
+    return Ok((MeshData(vertices, faces, normals, uvs, materials, material_indices), (vertex_offset, material_offset)))
+
+
 def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Result[MeshData, Exception]:
-    warning("MDM is not supported yet")
-    return Err(Exception("MDM is not supported yet"))
+    try:
+        soft_skin_meshes = mdm.meshes
+        root_translation = mdh.root_translation
+        root_translation = Vector((root_translation.x, root_translation.z, root_translation.y)) * scale
+        parsed_attachments, (vertex_offset, material_offset) = parse_mesh_attachments(mdm, mdh, scale).unwrap()
+        vertices, faces, normals, uvs, materials, material_indices = (
+            parsed_attachments.vertices,
+            parsed_attachments.faces,
+            parsed_attachments.normals,
+            parsed_attachments.uvs,
+            parsed_attachments.materials,
+            parsed_attachments.material_indices,
+        )
+
+        for index, soft_skin_mesh in enumerate(soft_skin_meshes):
+            mesh = parse_multi_resolution_mesh(soft_skin_mesh.mesh, scale).unwrap()
+
+            vertices_relative_to_root = [vertex - root_translation for vertex in mesh.vertices]
+            vertices.extend(vertices_relative_to_root)
+
+            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
+            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
+            materials.extend(mesh.materials)
+            vertices.extend(mesh.vertices)
+            normals.extend(mesh.normals)
+            uvs.extend(mesh.uvs)
+
+            vertex_offset += len(mesh.vertices)
+            material_offset += len(mesh.materials)
+
+    except Exception as e:
+        error("Failed to parse model")
+        return Err(e)
+
+    return Ok(MeshData(vertices, faces, normals, uvs, materials, material_indices))
 
 
-# TODO: Implement
 def parse_model(mdl: Model, scale: float = 0.01) -> Result[MeshData, Exception]:
-    warning("MDL is not supported yet")
-    return Err(Exception("MDL is not supported yet"))
+    try:
+        return parse_mesh(mdl.mesh, mdl.hierarchy, scale)
+
+    except Exception as e:
+        error("Failed to parse model")
+        return Err(e)
 
 
 def parse_morph_mesh(mmb: MorphMesh, scale: float = 0.01) -> Result[MeshData, Exception]:
