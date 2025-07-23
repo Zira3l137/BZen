@@ -49,6 +49,9 @@ class MeshData:
     materials: List[MaterialData] = field(default_factory=list)
     material_indices: List[int] = field(default_factory=list)
 
+    def is_empty(self) -> bool:
+        return len(self.vertices) == 0
+
 
 def index_visuals(game_directory: Path) -> Result[Dict[str, VisualLoader], Exception]:
     try:
