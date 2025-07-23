@@ -7,9 +7,9 @@ script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
 
-from logging import info
+from logging import error, info, warning
 
-from zenkit import World
+from zenkit import GameVersion, World
 
 from error import Err, Ok, Result
 from log import logging_setup
@@ -48,13 +48,21 @@ def main() -> Result[None, Exception]:
         game_directory: Path = args["game-directory"]
         output_path: Path = args["output"]
 
-        logging_setup(args["verbosity"])
+        logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
 
         info("Loading input file")
         if not input_path.suffix.lower() == ".zen":
             return Err(Exception("Input file must be a .zen file"))
 
-        world = World.load(input_path)
+        game_version = (
+            GameVersion.GOTHIC2 if "gothicii" in game_directory.stem.lower().replace(" ", "") else GameVersion.GOTHIC1
+        )
+        world = World.load(input_path, game_version)
+        info(f"Loading {game_version.name} world")
+
+        if not len(world.root_objects):
+            error("Zenkit error: could not load world")
+            return Err(Exception("Zenkit error: could not load world"))
 
         info("Indexing textures")
         textures = index_textures(game_directory).unwrap()
@@ -65,8 +73,14 @@ def main() -> Result[None, Exception]:
         info("Indexing VOBs")
         vobs = index_vobs(world, visuals).unwrap()
 
+        if len(vobs) == 0:
+            error("Attention! No VOB entries were found during parsing!")
+
         info("Parsing world data")
         wrld_mesh_data = parse_world_mesh(world, 0.01).unwrap()
+
+        if wrld_mesh_data.is_empty():
+            error("Attention! World mesh is empty!")
 
         info("Creating world")
         create_obj_from_mesh("LEVEL", wrld_mesh_data, textures).unwrap()
