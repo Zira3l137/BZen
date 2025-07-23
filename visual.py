@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Tuple, TypeAlias
 
 from mathutils import Matrix, Vector
-from zenkit import Model, ModelHierarchy, ModelMesh, MorphMesh, MultiResolutionMesh, Vfs, VfsNode, VirtualObject, World
+from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
+                    MultiResolutionMesh, Vfs, VfsNode, VirtualObject, World)
 
 from error import Err, Ok, Option, Result, none, some
 from exceptions import NoVisualDataException, UnknownExtensionException
@@ -205,7 +206,7 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Excep
             polygon = polygons[leaf_index]
             position_indices, feature_indices = polygon.position_indices, polygon.feature_indices
 
-            if polygon in polygon_cache or polygon.is_portal or polygon.is_ghost_occluder or polygon.is_lod:
+            if polygon in polygon_cache or polygon.is_portal or polygon.is_ghost_occluder:
                 continue
 
             polygon_cache.add(polygon)
