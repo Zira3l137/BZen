@@ -2,6 +2,7 @@ import subprocess
 import sys
 from argparse import ArgumentError, ArgumentParser
 from logging import error
+from os import remove
 from pathlib import Path
 from typing import Any, Dict
 
@@ -62,13 +63,11 @@ if __name__ == "__main__":
 
     logging_setup(args["verbosity"])
 
-    input, blender_exe, game_directory, output, verbosity = (
-        args["input"],
-        args["blender-exe"],
-        args["game-directory"],
-        args["output"],
-        args["verbosity"],
-    )
+    input: Path = args["input"]
+    blender_exe: Path = args["blender-exe"]
+    game_directory: Path = args["game-directory"]
+    output: Path | None = args["output"]
+    verbosity: int = args["verbosity"]
 
     if any([not path.exists() for path in [input, blender_exe, game_directory]]):
         error("Input file, blender executable, or game directory does not exist")
@@ -76,9 +75,7 @@ if __name__ == "__main__":
 
     if not output:
         output = Path.cwd() / input.with_suffix(".blend").name
-
-    if output.exists():
-        error("Output file already exists")
-        exit(1)
+    elif output.exists():
+        remove(output)
 
     main(input, blender_exe, game_directory, output, verbosity).unwrap()
