@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+from typing import Optional
 
 BLACK = "\x1b[30m"
 RED = "\x1b[31m"
@@ -28,7 +30,7 @@ class ColoredFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def logging_setup(verbosity: int):
+def logging_setup(verbosity: int, log_file: Optional[Path | str] = None):
     if verbosity < 0:
         verbosity = abs(verbosity)
     elif verbosity > 3:
@@ -36,7 +38,13 @@ def logging_setup(verbosity: int):
 
     logger = logging.getLogger()
     logger.setLevel(log_level[verbosity])
+    logger.handlers.clear()
 
     ch = logging.StreamHandler()
     ch.setFormatter(ColoredFormatter())
     logger.addHandler(ch)
+
+    if log_file:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setFormatter(logging.Formatter("[%(levelname)s - %(filename)s - %(funcName)s - %(lineno)d] %(message)s"))
+        logger.addHandler(fh)
