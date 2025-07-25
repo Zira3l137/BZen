@@ -1,4 +1,7 @@
+from functools import wraps
+
 import bpy
+from line_profiler import LineProfiler
 
 
 def with_suffix(path: str, suffix: str, replace: bool = False) -> str:
@@ -23,3 +26,19 @@ def abgr_to_rgba(color: int) -> tuple[float, float, float, float]:
 
 def blender_save_changes(*args, **kwargs):
     bpy.ops.wm.save_mainfile(*args, **kwargs)
+
+
+def profile(func):
+    profiler = LineProfiler()
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        profiler.add_function(func)
+        profiler.enable_by_count()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            profiler.disable_by_count()
+            profiler.print_stats()
+
+    return wrapper

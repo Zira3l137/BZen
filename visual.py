@@ -13,7 +13,7 @@ from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
 from error import Err, Ok, Option, Result, none, some
 from exceptions import NoVisualDataException, UnknownExtensionException
 from material import MaterialData
-from utils import abgr_to_rgba, suffix, with_suffix
+from utils import abgr_to_rgba, profile, suffix, with_suffix
 
 VobVisual: TypeAlias = (
     Option[MultiResolutionMesh] | Option[ModelMesh] | Option[Model] | Option[MorphMesh] | Option[ModelHierarchy]
@@ -249,32 +249,31 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Excep
 
 def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -> Result[MeshData, Exception]:
     try:
-        vertices, faces, uvs, normals, material_indices = [], [], [], [], []
+        vertices, faces, normals, uvs, material_indices = [], [], [], [], []
         materials = [MaterialData(mat.name, abgr_to_rgba(mat.color), mat.texture) for mat in mrm.material]  # type: ignore
 
-        positions, vertex_cache = mrm.positions, {}
+        positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
         for submesh_index, submesh in enumerate(mrm.submeshes):
             wedges = submesh.wedges
+            triangles = submesh.triangles
 
-            for triangle in submesh.triangles:
+            for triangle in triangles:
                 triangle_wedges = triangle.wedges
-                face_wedges = [wedges[triangle_wedges[i]] for i in range(3)]
-
                 face_indices = []
-                for wedge in face_wedges:
+                for i in range(3):
+                    wedge = wedges[triangle_wedges[i]]
                     normals.append(Vector((wedge.normal.x, wedge.normal.z, wedge.normal.y)))
                     pos = positions[wedge.index] * scale
                     blender_pos = (float(pos.x), float(pos.z), float(pos.y))
-                    pos_hash = hash(blender_pos)
 
-                    if pos_hash not in vertex_cache:
+                    if blender_pos not in vertex_cache:
                         face_index = len(vertices)
                         face_indices.append(face_index)
 
                         vertices.append(Vector(blender_pos))
-                        vertex_cache[pos_hash] = face_index
+                        vertex_cache[blender_pos] = face_index
                     else:
-                        face_indices.append(vertex_cache[pos_hash])
+                        face_indices.append(vertex_cache[blender_pos])
 
                     uvs.append((wedge.texture.x, -wedge.texture.y))
                 material_indices.append(submesh_index)

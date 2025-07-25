@@ -7,7 +7,7 @@ script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
 
-from logging import error, info, warning
+from logging import error, info
 
 from zenkit import GameVersion, World
 

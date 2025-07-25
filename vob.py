@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import bpy
 from mathutils import Euler, Matrix, Vector
-from zenkit import Mat3x3, Vec3f, VirtualObject, World
+from zenkit import Mat3x3, Vec3f, World
 
 from error import Err, Ok, Result
 from exceptions import UnknownExtensionException, VobHasNoMeshException
@@ -46,24 +46,32 @@ def index_vobs(
 ) -> Result[Dict[str, VobData], Exception]:
     try:
         vobs = {}
+        mesh_cache = {}
+        stack = world.root_objects
 
-        def index_obj(obj: VirtualObject, storage: Dict[str, VobData]):
-            mesh_data = parse_visual_data(obj, visuals_cache)
+        while stack:
+            obj = stack.pop()
+            mesh_data = None
+            visual_name = obj.visual.name
+            if visual_name in mesh_cache:
+                mesh_data = mesh_cache[obj.visual.name]
+            else:
+                mesh_data = parse_visual_data(obj, visuals_cache)
+                mesh_cache[visual_name] = mesh_data
+
             if mesh_data.is_certain_err(UnknownExtensionException):
-                return
+                continue
 
-            storage[f"{trim_suffix(obj.visual.name)}_{obj.id}"] = VobData(
+            vobs[f"{trim_suffix(visual_name)}_{obj.id}"] = VobData(
                 name=obj.name,
                 mesh=mesh_data.unwrap(),
                 position=get_vob_position(obj.position, scale),
                 rotation=get_vob_euler_rotation(obj.rotation),
             )
-            if len(obj.children):
-                for child in obj.children:
-                    index_obj(child, storage)
 
-        for obj in world.root_objects:
-            index_obj(obj, vobs)
+            children = obj.children
+            if len(children):
+                stack.extend(children)
 
     except Exception as e:
         error("Failed to index VOBs")
