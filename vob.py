@@ -5,16 +5,17 @@ from typing import Dict, Optional
 
 import bpy
 from mathutils import Euler, Matrix, Vector
-from zenkit import Mat3x3, Vec3f, VobType, World
+from zenkit import (DaedalusInstanceType, DaedalusVm, Mat3x3, Vec3f,
+                    VirtualObject, VobType, World)
 
 from error import Err, Ok, Result
 from exceptions import UnknownExtensionException, VobHasNoMeshException
 from material import create_material
 from utils import trim_suffix
 from visual import (MeshData, VisualLoader, parse_multi_resolution_mesh,
-                    parse_visual_data)
+                    parse_visual_data, parse_visual_data_from_obj)
 
-helper_vob = {
+invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
     VobType.zCVobSpot: "invisible_zcvobspot.mrm",
     VobType.zCTrigger: "invisible_zctrigger.mrm",
@@ -63,7 +64,7 @@ def get_vob_position(vector: Vec3f, scale: float = 0.01) -> Vector:
 
 
 def index_vobs(
-    world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
+    world: World, vm: DaedalusVm, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
 ) -> Result[Dict[str, VobData], Exception]:
     try:
         vobs = {}
@@ -76,13 +77,29 @@ def index_vobs(
 
             obj = stack.pop()
             obj_type = obj.type
-            obj_name = obj.name
+            obj_name = obj.name.lower()
 
-            if obj_type in helper_vob:
-                visual_name = helper_vob[obj_type]
+            if obj_type is VobType.zCVobLevelCompo:
+                stack.extend(obj.children)
+                continue
+
+            elif obj_type in invisible_vob:
+                visual_name = invisible_vob[obj_type]
                 mrm = visuals_cache[visual_name]().unwrap()
                 mesh_data = parse_multi_resolution_mesh(mrm, scale)  # type: ignore
-                vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name}_{obj.id}"
+                vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name.lower()}_{obj.id}"
+
+            elif obj_type is VobType.oCItem:
+                visual_name = parse_item_visual(obj, vm).unwrap().lower()
+
+                if visual_name in mesh_cache:
+                    mesh_data = mesh_cache[visual_name]
+                else:
+                    mesh_data = parse_visual_data(visual_name, visuals_cache, scale)
+                    mesh_cache[visual_name] = mesh_data
+
+                vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
+
             else:
                 visual = obj.visual
                 visual_name = visual.name.lower()
@@ -90,15 +107,16 @@ def index_vobs(
                 if visual_name in mesh_cache:
                     mesh_data = mesh_cache[visual_name]
                 else:
-                    mesh_data = parse_visual_data(obj, visuals_cache)
+                    mesh_data = parse_visual_data_from_obj(obj, visuals_cache, scale)
                     mesh_cache[visual_name] = mesh_data
+
                 vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
 
             if mesh_data.is_certain_err(UnknownExtensionException):
                 continue
 
             vobs[vob_name] = VobData(
-                name=obj.name,
+                name=obj_name,
                 mesh=mesh_data.unwrap(),
                 position=get_vob_position(obj.position, scale),
                 rotation=get_vob_euler_rotation(obj.rotation),
@@ -150,6 +168,21 @@ def parse_waynet(
         return Err(e)
 
     return Ok(vobs)
+
+
+def parse_item_visual(obj: VirtualObject, vm: DaedalusVm) -> Result[str, Exception]:
+    try:
+        item = vm.init_instance(obj.name, DaedalusInstanceType.ITEM)
+
+        item_visual: str | None = item.visual  # type: ignore
+        if item_visual is None:
+            return Err(Exception("item has no visual"))
+
+    except Exception as e:
+        error("Failed to parse item visual")
+        return Err(e)
+
+    return Ok(item_visual)
 
 
 def create_obj_from_mesh(

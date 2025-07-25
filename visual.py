@@ -13,7 +13,7 @@ from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
 from error import Err, Ok, Option, Result, none, some
 from exceptions import NoVisualDataException, UnknownExtensionException
 from material import MaterialData
-from utils import abgr_to_rgba, suffix, with_suffix
+from utils import suffix, with_suffix
 
 VobVisual: TypeAlias = (
     Option[MultiResolutionMesh] | Option[ModelMesh] | Option[Model] | Option[MorphMesh] | Option[ModelHierarchy]
@@ -148,54 +148,64 @@ def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> VobVi
         return none()
 
 
-def parse_visual_data(
-    obj: VirtualObject, cache: Dict[str, VisualLoader], scale: float = 0.01
-) -> Result[MeshData, NoVisualDataException | UnknownExtensionException]:
+def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 0.01) -> Result[MeshData, Exception]:  # type: ignore
     try:
-        if obj.visual is None:
-            return Err(NoVisualDataException(f"object has no visual: {obj.name}"))
-
-        name = obj.visual.name
         extension = suffix(name).lower()
-        if extension not in compiled:
+        if extension == "" or extension not in compiled:
             return Err(UnknownExtensionException(f"unknown visual extension: {extension}"))
 
         compiled_name = with_suffix(name, compiled[extension], True).lower()
-        if "level" in obj.name.lower():
-            return Ok(MeshData([], [], [], [], []))
 
         match extension:
 
             case "3ds":
                 mrm = cache[compiled_name]().unwrap()
-                return parse_multi_resolution_mesh(mrm, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
+                return parse_multi_resolution_mesh(mrm, scale)  # type: ignore
 
             case "mds":
                 mdm = cache[compiled_name]().unwrap()
                 mdh = cache[with_suffix(name, "mdh", True).lower()]().unwrap()
-                return parse_mesh(mdm, mdh, scale).map_err(lambda err: err)  # type: ignore
+                return parse_mesh(mdm, mdh, scale)  # type: ignore
 
             case "asc":
                 mdl = cache[compiled_name]().unwrap()
-                return parse_model(mdl, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
+                return parse_model(mdl, scale)  # type: ignore
 
             case "mms":
                 mmb = cache[compiled_name]().unwrap()
-                return parse_morph_mesh(mmb, scale).map_err(lambda err: NoVisualDataException(err.__repr__()))  # type: ignore
-
-            case _:
-                return Err(NoVisualDataException(f"unknown visual type: {obj.visual.type}"))
+                return parse_morph_mesh(mmb, scale)  # type: ignore
 
     except Exception as e:
-        error(f"Failed to parse visual data")
-        return Err(NoVisualDataException(e.__repr__()))
+        error(f"Failed to parse visual data for {name}: {e}")
+        return Err(e)
+
+
+def parse_visual_data_from_obj(
+    obj: VirtualObject, cache: Dict[str, VisualLoader], scale: float = 0.01
+) -> Result[MeshData, Exception]:
+    try:
+        if obj.visual is None:
+            return Err(NoVisualDataException(f"object has no visual: {obj.name}"))
+
+        name = obj.visual.name.lower()
+        mesh_data = parse_visual_data(name, cache, scale).unwrap()
+
+    except Exception as e:
+        error(f"Failed to parse visual data for {obj.name}: {e}")
+        return Err(e)
+
+    return Ok(mesh_data)
 
 
 def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Exception]:
     try:
         bsp, mesh = wrld.bsp_tree, wrld.mesh
-        vertices, uvs, faces, normals, material_indices = [], [], [], [], []
-        materials = [MaterialData(mat.name, abgr_to_rgba(mat.color), mat.texture) for mat in mesh.materials]  # type: ignore
+        vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
+
+        for index, mat in enumerate(mesh.materials):
+            mat_color = mat.color
+            color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
+            materials[index] = MaterialData(mat.name, color, mat.texture)
 
         vertex_cache, polygon_cache = {}, set()
         positions, features, polygons, leaf_polygon_indices = (
@@ -249,8 +259,12 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Excep
 
 def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -> Result[MeshData, Exception]:
     try:
-        vertices, faces, normals, uvs, material_indices = [], [], [], [], []
-        materials = [MaterialData(mat.name, abgr_to_rgba(mat.color), mat.texture) for mat in mrm.material]  # type: ignore
+        vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
+
+        for index, mat in enumerate(mrm.material):
+            mat_color = mat.color
+            color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
+            materials[index] = MaterialData(mat.name, color, mat.texture)
 
         positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
         for submesh_index, submesh in enumerate(mrm.submeshes):
@@ -361,7 +375,7 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Resu
             parsed_attachments.material_indices,
         )
 
-        for index, soft_skin_mesh in enumerate(soft_skin_meshes):
+        for soft_skin_mesh in soft_skin_meshes:
             mesh = parse_multi_resolution_mesh(soft_skin_mesh.mesh, scale).unwrap()
 
             vertices_relative_to_root = [vertex - root_translation for vertex in mesh.vertices]

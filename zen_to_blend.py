@@ -6,10 +6,11 @@ from typing import Any, Dict
 script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
+    sys.path.append(str(script_dir / "venv" / "Lib" / "site-packages"))
 
 from logging import error, info
 
-from zenkit import GameVersion, World
+from zenkit import DaedalusVm, GameVersion, World
 
 from error import Err, Ok, Result
 from log import logging_setup
@@ -17,6 +18,8 @@ from material import index_textures
 from utils import blender_save_changes
 from visual import index_visuals, parse_world_mesh
 from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
+
+GOTHIC_DAT_RELATIVE_PATH = "_work/data/Scripts/_compiled/gothic.dat"
 
 
 def parse_args() -> Result[Dict[str, Any], ArgumentError]:
@@ -68,6 +71,9 @@ def main() -> Result[None, Exception]:
             error("Zenkit error: could not load world")
             return Err(Exception("Zenkit error: could not load world"))
 
+        info("Loading Daedalus virtual machine")
+        vm = DaedalusVm.load(game_directory / GOTHIC_DAT_RELATIVE_PATH)
+
         info("Indexing textures")
         textures = index_textures(game_directory).unwrap()
 
@@ -75,7 +81,7 @@ def main() -> Result[None, Exception]:
         visuals = index_visuals(game_directory).unwrap()
 
         info("Indexing VOBs")
-        vobs = index_vobs(world, visuals, scale).unwrap()
+        vobs = index_vobs(world, vm, visuals, scale).unwrap()
 
         if should_parse_waynet:
             info("Parsing waynet")
