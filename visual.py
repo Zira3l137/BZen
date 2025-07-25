@@ -202,10 +202,10 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> Result[MeshData, Excep
         bsp, mesh = wrld.bsp_tree, wrld.mesh
         vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
 
-        for index, mat in enumerate(mesh.materials):
+        for mat in mesh.materials:
             mat_color = mat.color
             color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
-            materials[index] = MaterialData(mat.name, color, mat.texture)
+            materials.append(MaterialData(mat.name, color, mat.texture))
 
         vertex_cache, polygon_cache = {}, set()
         positions, features, polygons, leaf_polygon_indices = (
@@ -261,10 +261,10 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
     try:
         vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
 
-        for index, mat in enumerate(mrm.material):
+        for mat in mrm.material:
             mat_color = mat.color
             color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
-            materials[index] = MaterialData(mat.name, color, mat.texture)
+            materials.append(MaterialData(mat.name, color, mat.texture))
 
         positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
         for submesh_index, submesh in enumerate(mrm.submeshes):
