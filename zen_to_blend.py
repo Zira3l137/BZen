@@ -16,7 +16,7 @@ from log import logging_setup
 from material import index_textures
 from utils import blender_save_changes
 from visual import index_visuals, parse_world_mesh
-from vob import create_obj_from_mesh, create_vobs, index_vobs
+from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
 
 
 def parse_args() -> Result[Dict[str, Any], ArgumentError]:
@@ -33,6 +33,8 @@ def parse_args() -> Result[Dict[str, Any], ArgumentError]:
         parser.add_argument("input", type=Path, help="Path to the input file")
         parser.add_argument("game-directory", type=Path, help="Path to the game directory")
         parser.add_argument("output", type=Path, help="Path to the output file")
+        parser.add_argument("scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
+        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
         parser.add_argument("verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
 
     except ArgumentError as e:
@@ -47,6 +49,8 @@ def main() -> Result[None, Exception]:
         input_path: Path = args["input"]
         game_directory: Path = args["game-directory"]
         output_path: Path = args["output"]
+        scale: float = args["scale"]
+        should_parse_waynet: bool = args["waynet"]
 
         logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
 
@@ -71,7 +75,12 @@ def main() -> Result[None, Exception]:
         visuals = index_visuals(game_directory).unwrap()
 
         info("Indexing VOBs")
-        vobs = index_vobs(world, visuals).unwrap()
+        vobs = index_vobs(world, visuals, scale).unwrap()
+
+        if should_parse_waynet:
+            info("Parsing waynet")
+            waynet_data = parse_waynet(world, visuals, scale).unwrap()
+            vobs.update(waynet_data)
 
         if len(vobs) == 0:
             error("Attention! No VOB entries were found during parsing!")

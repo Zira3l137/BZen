@@ -5,13 +5,34 @@ from typing import Dict, Optional
 
 import bpy
 from mathutils import Euler, Matrix, Vector
-from zenkit import Mat3x3, Vec3f, World
+from zenkit import Mat3x3, Vec3f, VobType, World
 
 from error import Err, Ok, Result
 from exceptions import UnknownExtensionException, VobHasNoMeshException
 from material import create_material
 from utils import trim_suffix
-from visual import MeshData, VisualLoader, parse_visual_data
+from visual import (MeshData, VisualLoader, parse_multi_resolution_mesh,
+                    parse_visual_data)
+
+helper_vob = {
+    VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
+    VobType.zCVobSpot: "invisible_zcvobspot.mrm",
+    VobType.zCTrigger: "invisible_zctrigger.mrm",
+    VobType.zCTriggerList: "invisible_zctrigger.mrm",
+    VobType.oCTriggerScript: "invisible_zctrigger.mrm",
+    VobType.oCTriggerChangeLevel: "invisible_zctriggerchangelevel.mrm",
+    VobType.zCCodeMaster: "invisible_zccodemaster.mrm",
+    VobType.zCMessageFilter: "invisible_zccodemaster.mrm",
+    VobType.zCMoverController: "invisible_zccodemaster.mrm",
+    VobType.zCTriggerWorldStart: "invisible_zccodemaster.mrm",
+    VobType.zCVobLight: "invisible_zcvoblight.mrm",
+    VobType.zCVobSound: "invisible_zcvobsound.mrm",
+    VobType.zCVobSoundDaytime: "invisible_zcvobsounddaytime.mrm",
+    VobType.oCZoneMusic: "invisible_zczonemusic.mrm",
+    VobType.oCZoneMusicDefault: "invisible_zczonemusic.mrm",
+    VobType.zCZoneZFog: "invisible_zczonezfog.mrm",
+    VobType.zCZoneZFogDefault: "invisible_zczonezfog.mrm",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,19 +71,33 @@ def index_vobs(
         stack = world.root_objects
 
         while stack:
-            obj = stack.pop()
             mesh_data = None
-            visual_name = obj.visual.name
-            if visual_name in mesh_cache:
-                mesh_data = mesh_cache[obj.visual.name]
+            vob_name = None
+
+            obj = stack.pop()
+            obj_type = obj.type
+            obj_name = obj.name
+
+            if obj_type in helper_vob:
+                visual_name = helper_vob[obj_type]
+                mrm = visuals_cache[visual_name]().unwrap()
+                mesh_data = parse_multi_resolution_mesh(mrm, scale)  # type: ignore
+                vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name}_{obj.id}"
             else:
-                mesh_data = parse_visual_data(obj, visuals_cache)
-                mesh_cache[visual_name] = mesh_data
+                visual = obj.visual
+                visual_name = visual.name.lower()
+
+                if visual_name in mesh_cache:
+                    mesh_data = mesh_cache[visual_name]
+                else:
+                    mesh_data = parse_visual_data(obj, visuals_cache)
+                    mesh_cache[visual_name] = mesh_data
+                vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
 
             if mesh_data.is_certain_err(UnknownExtensionException):
                 continue
 
-            vobs[f"{trim_suffix(visual_name)}_{obj.id}"] = VobData(
+            vobs[vob_name] = VobData(
                 name=obj.name,
                 mesh=mesh_data.unwrap(),
                 position=get_vob_position(obj.position, scale),
@@ -78,6 +113,42 @@ def index_vobs(
         return Err(e)
 
     info(f"Indexed {len(vobs)} VOBs")
+    return Ok(vobs)
+
+
+def parse_waynet(
+    world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
+) -> Result[Dict[str, VobData], Exception]:
+    try:
+        vobs = {}
+        waynet = world.way_net
+        waypoints = waynet.points
+
+        wp_mrm = visuals_cache["invisible_zcvobwaypoint.mrm"]().unwrap()
+        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale).unwrap()  # type: ignore
+
+        for waypoint in waypoints:
+            position = waypoint.position
+            direction = waypoint.direction
+
+            target_direction = Vector((direction.x, direction.z, direction.y))
+            quat = target_direction.to_track_quat("Y", "Z")
+            vob_rotation = quat.to_euler()
+
+            vob_position = get_vob_position(position, scale)
+            vob_name = waypoint.name.lower()
+
+            vobs[vob_name] = VobData(
+                name=vob_name,
+                mesh=wp_mesh,
+                position=vob_position,
+                rotation=vob_rotation,
+            )
+
+    except Exception as e:
+        error("Failed to index Waynet")
+        return Err(e)
+
     return Ok(vobs)
 
 
@@ -137,7 +208,8 @@ def create_obj_from_vob_data(
 def create_vobs(vobs: Dict[str, VobData], textures: Dict[str, str]) -> Result[None, Exception]:
     try:
         success_count = 0
-        for index, (vob_name, vob_data) in enumerate(vobs.items()):
+
+        for vob_name, vob_data in vobs.items():
             result = create_obj_from_vob_data(vob_name, vob_data, textures)
 
             if result.is_certain_err(VobHasNoMeshException):

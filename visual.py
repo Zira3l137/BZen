@@ -13,7 +13,7 @@ from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
 from error import Err, Ok, Option, Result, none, some
 from exceptions import NoVisualDataException, UnknownExtensionException
 from material import MaterialData
-from utils import abgr_to_rgba, profile, suffix, with_suffix
+from utils import abgr_to_rgba, suffix, with_suffix
 
 VobVisual: TypeAlias = (
     Option[MultiResolutionMesh] | Option[ModelMesh] | Option[Model] | Option[MorphMesh] | Option[ModelHierarchy]
@@ -367,7 +367,7 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Resu
             vertices_relative_to_root = [vertex - root_translation for vertex in mesh.vertices]
             vertices.extend(vertices_relative_to_root)
 
-            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
+            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)  # type: ignore
             material_indices.extend(idx + material_offset for idx in mesh.material_indices)
             materials.extend(mesh.materials)
             vertices.extend(mesh.vertices)

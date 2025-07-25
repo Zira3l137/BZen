@@ -23,7 +23,9 @@ def parse_args() -> Result[Dict[str, Any], ArgumentError]:
         blender_exe: Path to the blender executable
         game_directory: Path to the game directory
         output: Path to the output file (defaults to current directory)
-        verbosity: Verbosity level (0-3)
+        scale: Scale factor (default: 0.01)
+        waynet: Parse waynet (default: False)
+        verbosity: Verbosity level (0-3) (default: 0)
     """
     parser = ArgumentParser()
     try:
@@ -31,13 +33,23 @@ def parse_args() -> Result[Dict[str, Any], ArgumentError]:
         parser.add_argument("blender-exe", type=Path, help="Path to the blender executable")
         parser.add_argument("game-directory", type=Path, help="Path to the game directory")
         parser.add_argument("-o", "--output", type=Path, help="Path to the output file (defaults to current directory)")
+        parser.add_argument("-s", "--scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
+        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
         parser.add_argument("-v", "--verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
     except ArgumentError as e:
         return Err(e)
     return Ok(parser.parse_args().__dict__)
 
 
-def main(input: Path, blender_exe: Path, game_directory: Path, output: Path, verbosity: int) -> Result[None, Exception]:
+def main(
+    input: Path,
+    blender_exe: Path,
+    game_directory: Path,
+    output: Path,
+    scale: float,
+    verbosity: int,
+    waynet: bool = False,
+) -> Result[None, Exception]:
     blender_args = [
         blender_exe,
         "--background",
@@ -48,8 +60,12 @@ def main(input: Path, blender_exe: Path, game_directory: Path, output: Path, ver
         str(input),
         str(game_directory),
         str(output),
+        str(scale),
         str(verbosity),
     ]
+
+    if waynet:
+        blender_args.append("-w")
 
     completed_process = subprocess.run(blender_args)
     if completed_process.returncode != 0:
@@ -67,6 +83,8 @@ if __name__ == "__main__":
     blender_exe: Path = args["blender-exe"]
     game_directory: Path = args["game-directory"]
     output: Path | None = args["output"]
+    scale: float = args["scale"]
+    waynet: bool = args["waynet"]
     verbosity: int = args["verbosity"]
 
     if any([not path.exists() for path in [input, blender_exe, game_directory]]):
@@ -78,4 +96,4 @@ if __name__ == "__main__":
     elif output.exists():
         remove(output)
 
-    main(input, blender_exe, game_directory, output, verbosity).unwrap()
+    main(input, blender_exe, game_directory, output, scale, verbosity, waynet).unwrap()

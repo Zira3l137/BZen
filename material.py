@@ -44,7 +44,9 @@ def create_material(material: MaterialData, textures: Dict[str, str]) -> Result[
             return Ok(existing_material)
 
         if not material.texture:
-            return Ok(bpy.data.materials.new(name=material.name))
+            bmat = bpy.data.materials.new(name=material.name)
+            bmat.diffuse_color = material.color
+            return Ok(bmat)
 
         bmat = bpy.data.materials.new(name=material.name)
         bmat.use_nodes = True
