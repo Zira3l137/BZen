@@ -21,7 +21,7 @@ class Result(ABC, Generic[T, E]):
     def is_err(self) -> bool: ...
 
     @abstractmethod
-    def is_certain_err(self, type: type) -> bool: ...
+    def is_certain_err(self, *type: type) -> bool: ...
 
     @abstractmethod
     def unwrap(self) -> T: ...
@@ -55,7 +55,7 @@ class Ok(Result[T, E]):
     def is_err(self) -> bool:
         return False
 
-    def is_certain_err(self, type: type) -> bool:
+    def is_certain_err(self, *type: type) -> bool:
         return False
 
     def unwrap(self) -> T:
@@ -96,13 +96,13 @@ class Err(Result[T, E]):
     def is_err(self) -> bool:
         return True
 
-    def is_certain_err(self, type: type) -> bool:
-        return isinstance(self.error, type)
+    def is_certain_err(self, *type: type) -> bool:
+        return any(isinstance(self.error, t) for t in type)
 
     def unwrap(self) -> T:
-        if isinstance(self.error, Exception):
-            raise self.error
-        raise UnwrapError(str(self.error))
+        if isinstance(self.error, str):
+            raise UnwrapError(self.error)
+        raise self.error
 
     def unwrap_or(self, default: T) -> T:
         return default
