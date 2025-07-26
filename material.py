@@ -17,16 +17,16 @@ class MaterialData:
 def index_textures(game_directory: Path) -> Dict[str, str]:
     try:
         textures = {}
+        stack = [entry for entry in scandir(game_directory / "_work" / "data" / "textures")]
 
-        def index_dir(dir, storage):
-            for entry in scandir(dir):
-                if not entry.is_dir():
-                    if entry.name.lower().endswith(".tga"):
-                        storage[entry.name.lower()] = str(entry.path)
-                else:
-                    index_dir(entry.path, storage)
+        while stack:
+            entry = stack.pop()
+            if not entry.is_dir():
+                if entry.name.lower().endswith(".tga"):
+                    textures[entry.name.lower()] = str(entry.path)
+                    continue
 
-        index_dir(game_directory / "_work" / "data" / "textures", textures)
+            stack.extend([entry for entry in scandir(entry.path)])
 
     except Exception as e:
         error(f"Failed to index textures")

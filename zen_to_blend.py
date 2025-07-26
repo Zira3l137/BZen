@@ -75,6 +75,8 @@ def main():
 
         info("Indexing textures")
         textures = index_textures(game_directory)
+        if len(textures) == 0:
+            error("Attention! No textures were found during parsing!")
 
         info("Indexing visuals")
         visuals = index_visuals(game_directory)
