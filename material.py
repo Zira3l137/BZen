@@ -6,8 +6,6 @@ from typing import Dict, Optional, Tuple
 
 import bpy
 
-from error import Err, Ok, Result
-
 
 @dataclass(frozen=True, slots=True)
 class MaterialData:
@@ -16,7 +14,7 @@ class MaterialData:
     texture: Optional[str] = field(default=None)
 
 
-def index_textures(game_directory: Path) -> Result[Dict[str, str], Exception]:
+def index_textures(game_directory: Path) -> Dict[str, str]:
     try:
         textures = {}
 
@@ -32,21 +30,21 @@ def index_textures(game_directory: Path) -> Result[Dict[str, str], Exception]:
 
     except Exception as e:
         error(f"Failed to index textures")
-        return Err(e)
+        raise e
 
     info(f"Indexed {len(textures)} textures")
-    return Ok(textures)
+    return textures
 
 
-def create_material(material: MaterialData, textures: Dict[str, str]) -> Result[bpy.types.Material, Exception]:
+def create_material(material: MaterialData, textures: Dict[str, str]) -> bpy.types.Material:
     try:
         if existing_material := bpy.data.materials.get(material.name):
-            return Ok(existing_material)
+            return existing_material
 
         if not material.texture:
             bmat = bpy.data.materials.new(name=material.name)
             bmat.diffuse_color = material.color
-            return Ok(bmat)
+            return bmat
 
         bmat = bpy.data.materials.new(name=material.name)
         bmat.use_nodes = True
@@ -86,6 +84,6 @@ def create_material(material: MaterialData, textures: Dict[str, str]) -> Result[
 
     except Exception as e:
         error(f"Failed to create material {material.name}")
-        return Err(e)
+        raise e
 
-    return Ok(bmat)
+    return bmat

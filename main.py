@@ -10,13 +10,12 @@ script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
 
-from error import Err, Ok, Result
 from log import logging_setup
 
 BLENDER_SCRIPT = str(Path(__file__).parent / "zen_to_blend.py")
 
 
-def parse_args() -> Result[Dict[str, Any], ArgumentError]:
+def parse_args() -> Dict[str, Any]:
     """
     Args:
         input: Path to the input file
@@ -37,8 +36,8 @@ def parse_args() -> Result[Dict[str, Any], ArgumentError]:
         parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
         parser.add_argument("-v", "--verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
     except ArgumentError as e:
-        return Err(e)
-    return Ok(parser.parse_args().__dict__)
+        raise e
+    return parser.parse_args().__dict__
 
 
 def main(
@@ -49,7 +48,7 @@ def main(
     scale: float,
     verbosity: int,
     waynet: bool = False,
-) -> Result[None, Exception]:
+):
     blender_args = [
         blender_exe,
         "--background",
@@ -69,13 +68,11 @@ def main(
 
     completed_process = subprocess.run(blender_args)
     if completed_process.returncode != 0:
-        return Err(Exception(completed_process.stderr))
-
-    return Ok(None)
+        raise Exception(completed_process.stderr)
 
 
 if __name__ == "__main__":
-    args = parse_args().unwrap()
+    args = parse_args()
 
     logging_setup(args["verbosity"])
 
@@ -96,4 +93,4 @@ if __name__ == "__main__":
     elif output.exists():
         remove(output)
 
-    main(input, blender_exe, game_directory, output, scale, verbosity, waynet).unwrap()
+    main(input, blender_exe, game_directory, output, scale, verbosity, waynet)

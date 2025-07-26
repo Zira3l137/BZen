@@ -5,11 +5,9 @@ from typing import Dict, Optional
 
 import bpy
 from mathutils import Euler, Matrix, Vector
-from zenkit import (DaedalusInstanceType, DaedalusVm, Mat3x3, Vec3f,
-                    VirtualObject, VobType, World)
+from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
+                    Vec3f, VirtualObject, VobType, World)
 
-from error import Err, Ok, Result
-from exceptions import UnknownExtensionException, VobHasNoMeshException
 from material import create_material
 from utils import trim_suffix
 from visual import (MeshData, VisualLoader, parse_multi_resolution_mesh,
@@ -65,10 +63,10 @@ def get_vob_position(vector: Vec3f, scale: float = 0.01) -> Vector:
 
 def index_vobs(
     world: World, vm: DaedalusVm, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
-) -> Result[Dict[str, VobData], Exception]:
+) -> Dict[str, VobData]:
     try:
-        vobs = {}
-        mesh_cache = {}
+        vobs: Dict[str, VobData] = {}
+        mesh_cache: Dict[str, MeshData] = {}
         stack = world.root_objects
 
         while stack:
@@ -85,17 +83,26 @@ def index_vobs(
 
             elif obj_type in invisible_vob:
                 visual_name = invisible_vob[obj_type]
-                mrm = visuals_cache[visual_name]().unwrap()
+                mrm = visuals_cache[visual_name]()
                 mesh_data = parse_multi_resolution_mesh(mrm, scale)  # type: ignore
                 vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name.lower()}_{obj.id}"
 
             elif obj_type is VobType.oCItem:
-                visual_name = parse_item_visual(obj, vm).unwrap().lower()
+                visual_name = parse_item_visual_name(obj, vm)
+                if not visual_name:
+                    error(f"Item {obj_name} has no visual")
+                    continue
+
+                visual_name = visual_name.lower()
 
                 if visual_name in mesh_cache:
                     mesh_data = mesh_cache[visual_name]
                 else:
                     mesh_data = parse_visual_data(visual_name, visuals_cache, scale)
+                    if not mesh_data:
+                        error(f"Failed to parse visual data for {visual_name}")
+                        continue
+
                     mesh_cache[visual_name] = mesh_data
 
                 vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
@@ -108,16 +115,17 @@ def index_vobs(
                     mesh_data = mesh_cache[visual_name]
                 else:
                     mesh_data = parse_visual_data_from_obj(obj, visuals_cache, scale)
+                    if not mesh_data:
+                        error(f"Failed to parse visual data for {visual_name}")
+                        continue
+
                     mesh_cache[visual_name] = mesh_data
 
                 vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
 
-            if mesh_data.is_certain_err(UnknownExtensionException):
-                continue
-
             vobs[vob_name] = VobData(
                 name=obj_name,
-                mesh=mesh_data.unwrap(),
+                mesh=mesh_data,
                 position=get_vob_position(obj.position, scale),
                 rotation=get_vob_euler_rotation(obj.rotation),
             )
@@ -128,22 +136,20 @@ def index_vobs(
 
     except Exception as e:
         error("Failed to index VOBs")
-        return Err(e)
+        raise e
 
     info(f"Indexed {len(vobs)} VOBs")
-    return Ok(vobs)
+    return vobs
 
 
-def parse_waynet(
-    world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
-) -> Result[Dict[str, VobData], Exception]:
+def parse_waynet(world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01) -> Dict[str, VobData]:
     try:
         vobs = {}
         waynet = world.way_net
         waypoints = waynet.points
 
-        wp_mrm = visuals_cache["invisible_zcvobwaypoint.mrm"]().unwrap()
-        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale).unwrap()  # type: ignore
+        wp_mrm = visuals_cache["invisible_zcvobwaypoint.mrm"]()
+        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)  # type: ignore
 
         for waypoint in waypoints:
             position = waypoint.position
@@ -165,29 +171,28 @@ def parse_waynet(
 
     except Exception as e:
         error("Failed to index Waynet")
-        return Err(e)
+        raise e
 
-    return Ok(vobs)
+    return vobs
 
 
-def parse_item_visual(obj: VirtualObject, vm: DaedalusVm) -> Result[str, Exception]:
+def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
     try:
-        item = vm.init_instance(obj.name, DaedalusInstanceType.ITEM)
+        item: ItemInstance = vm.init_instance(obj.name, DaedalusInstanceType.ITEM)  # type: ignore
 
-        item_visual: str | None = item.visual  # type: ignore
-        if item_visual is None:
-            return Err(Exception("item has no visual"))
+        item_visual = item.visual
+        if not item_visual:
+            error(f"Item {obj.name} has no visual")
+            return None
 
     except Exception as e:
         error("Failed to parse item visual")
-        return Err(e)
+        raise e
 
-    return Ok(item_visual)
+    return item_visual
 
 
-def create_obj_from_mesh(
-    unique_name: str, mesh_data: MeshData, textures: Dict[str, str]
-) -> Result[bpy.types.Object, Exception]:
+def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[str, str]) -> bpy.types.Object:
     try:
         mesh = bpy.data.meshes.new(unique_name)
         mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
@@ -201,12 +206,14 @@ def create_obj_from_mesh(
         for material in mesh_data.materials:
             mat = bpy.data.materials.get(material.name)
             if not mat:
-                mat = create_material(material, textures).unwrap()
+                mat = create_material(material, textures)
             mesh.materials.append(mat)
 
         for index, polygon in enumerate(mesh.polygons):
             if not len(mesh_data.materials):
+                warning("Mesh has no materials")
                 continue
+
             polygon.material_index = mesh_data.material_indices[index]
 
         mesh.update()
@@ -214,49 +221,47 @@ def create_obj_from_mesh(
         bpy.context.collection.objects.link(obj)
     except Exception as e:
         error("Failed to create object from mesh")
-        return Err(e)
+        raise e
 
-    return Ok(obj)
+    return obj
 
 
 def create_obj_from_vob_data(
     unique_name: str, vob_data: VobData, textures: Dict[str, str]
-) -> Result[bpy.types.Object, Exception]:
+) -> Optional[bpy.types.Object]:
     try:
         vob_mesh = vob_data.mesh
 
         if not vob_mesh:
-            return Err(VobHasNoMeshException(f"no mesh for VOB {unique_name}"))
+            error(f"VOB {unique_name} has no mesh, skipping")
+            return None
 
-        obj = create_obj_from_mesh(unique_name, vob_mesh, textures).unwrap()
+        obj = create_obj_from_mesh(unique_name, vob_mesh, textures)
         obj.location = vob_data.position or Vector((0, 0, 0))
         obj.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
     except Exception as e:
         error(f"Failed to create object {unique_name}")
-        return Err(e)
+        raise e
 
-    return Ok(obj)
+    return obj
 
 
-def create_vobs(vobs: Dict[str, VobData], textures: Dict[str, str]) -> Result[None, Exception]:
+def create_vobs(vobs: Dict[str, VobData], textures: Dict[str, str]):
     try:
         success_count = 0
 
         for vob_name, vob_data in vobs.items():
             result = create_obj_from_vob_data(vob_name, vob_data, textures)
 
-            if result.is_certain_err(VobHasNoMeshException):
+            if not result:
                 warning(f"VOB {vob_name} has no mesh, skipping")
                 continue
-            else:
-                result.unwrap()
 
             success_count += 1
 
     except Exception as e:
         error("Failed to create VOBs")
-        return Err(e)
+        raise e
 
     bpy.context.view_layer.update()
     info(f"Created {success_count} VOBs")
-    return Ok(None)

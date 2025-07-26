@@ -12,7 +12,6 @@ from logging import error, info
 
 from zenkit import DaedalusVm, GameVersion, World
 
-from error import Err, Ok, Result
 from log import logging_setup
 from material import index_textures
 from utils import blender_save_changes
@@ -22,7 +21,7 @@ from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
 GOTHIC_DAT_RELATIVE_PATH = "_work/data/Scripts/_compiled/gothic.dat"
 
 
-def parse_args() -> Result[Dict[str, Any], ArgumentError]:
+def parse_args() -> Dict[str, Any]:
     """
     Args:
         input: Path to the input file
@@ -41,14 +40,14 @@ def parse_args() -> Result[Dict[str, Any], ArgumentError]:
         parser.add_argument("verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
 
     except ArgumentError as e:
-        return Err(e)
+        raise e
 
-    return Ok(parser.parse_args(args).__dict__)
+    return parser.parse_args(args).__dict__
 
 
-def main() -> Result[None, Exception]:
+def main():
     try:
-        args = parse_args().expect("Failed to parse arguments")
+        args = parse_args()
         input_path: Path = args["input"]
         game_directory: Path = args["game-directory"]
         output_path: Path = args["output"]
@@ -59,7 +58,7 @@ def main() -> Result[None, Exception]:
 
         info("Loading input file")
         if not input_path.suffix.lower() == ".zen":
-            return Err(Exception("Input file must be a .zen file"))
+            raise Exception("Input file must be a .zen file")
 
         game_version = (
             GameVersion.GOTHIC2 if "gothicii" in game_directory.stem.lower().replace(" ", "") else GameVersion.GOTHIC1
@@ -69,49 +68,47 @@ def main() -> Result[None, Exception]:
 
         if not len(world.root_objects):
             error("Zenkit error: could not load world")
-            return Err(Exception("Zenkit error: could not load world"))
+            raise Exception("Zenkit error: could not load world")
 
         info("Loading Daedalus virtual machine")
         vm = DaedalusVm.load(game_directory / GOTHIC_DAT_RELATIVE_PATH)
 
         info("Indexing textures")
-        textures = index_textures(game_directory).unwrap()
+        textures = index_textures(game_directory)
 
         info("Indexing visuals")
-        visuals = index_visuals(game_directory).unwrap()
+        visuals = index_visuals(game_directory)
 
         info("Indexing VOBs")
-        vobs = index_vobs(world, vm, visuals, scale).unwrap()
+        vobs = index_vobs(world, vm, visuals, scale)
 
         if should_parse_waynet:
             info("Parsing waynet")
-            waynet_data = parse_waynet(world, visuals, scale).unwrap()
+            waynet_data = parse_waynet(world, visuals, scale)
             vobs.update(waynet_data)
 
         if len(vobs) == 0:
             error("Attention! No VOB entries were found during parsing!")
 
         info("Parsing world data")
-        wrld_mesh_data = parse_world_mesh(world, 0.01).unwrap()
+        wrld_mesh_data = parse_world_mesh(world, 0.01)
 
         if wrld_mesh_data.is_empty():
             error("Attention! World mesh is empty!")
 
         info("Creating world")
-        create_obj_from_mesh("LEVEL", wrld_mesh_data, textures).unwrap()
+        create_obj_from_mesh("LEVEL", wrld_mesh_data, textures)
 
         info("Creating VOBs")
-        create_vobs(vobs, textures).unwrap()
+        create_vobs(vobs, textures)
 
         info(f"Saving to {output_path}...")
         blender_save_changes(filepath=str(output_path))
         info("Done.")
 
     except Exception as e:
-        return Err(e)
-
-    return Ok(None)
+        raise e
 
 
 if __name__ == "__main__":
-    main().unwrap()
+    main()
