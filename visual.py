@@ -291,6 +291,71 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
     return MeshData(vertices, faces, normals, uvs, materials, material_indices)
 
 
+def parse_decal(obj: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
+    try:
+        obj_pos = obj.position
+        visual_name = obj.visual.name.lower()
+        origin = Vector((obj_pos.x, obj_pos.z, obj_pos.y)) * scale
+        material = MaterialData(visual_name, (1.0, 1.0, 1.0, 1.0), visual_name)
+
+        bounding_box_min = obj.bbox.min
+        bounding_box_max = obj.bbox.max
+
+        min_bound = (Vector((bounding_box_min.x, bounding_box_min.z, bounding_box_min.y)) * scale) - origin
+        max_bound = (Vector((bounding_box_max.x, bounding_box_max.z, bounding_box_max.y)) * scale) - origin
+
+        v0 = min_bound  # Bottom-left
+        v1 = Vector((max_bound.x, max_bound.y, min_bound.z))  # Bottom-right
+        v2 = max_bound  # Top-right
+        v3 = Vector((min_bound.x, min_bound.y, max_bound.z))  # Top-left
+
+        vertices = [v0, v1, v2, v3]
+        vertices += [v0.copy(), v1.copy(), v2.copy(), v3.copy()]
+
+        faces = [
+            (0, 1, 2),
+            (0, 2, 3),
+            (6, 5, 4),  # Flipped winding
+            (7, 6, 4),  # Flipped winding
+        ]
+
+        normals = [Vector((0, 0, 1))] * 3 * 2  # 6 normals: 3 per triangle × 2 sides
+        normals += [Vector((0, 0, -1))] * 3 * 2
+
+        uvs = [
+            # Front face
+            (0.0, 0.0),  # v0
+            (1.0, 0.0),  # v1
+            (1.0, 1.0),  # v2
+            (0.0, 0.0),  # v0
+            (1.0, 1.0),  # v2
+            (0.0, 1.0),  # v3
+            # Back face (can be same UVs since it's a decal)
+            (1.0, 1.0),  # v2
+            (1.0, 0.0),  # v1
+            (0.0, 0.0),  # v0
+            (0.0, 1.0),  # v3
+            (1.0, 1.0),  # v2
+            (0.0, 0.0),  # v0
+        ]
+
+        materials = [material]
+        material_indices = [0, 0, 0, 0]
+
+    except Exception as e:
+        error(f"Failed to parse decal data for {obj.name}: {e}")
+        return None
+
+    return MeshData(
+        vertices=vertices,
+        faces=faces,
+        normals=normals,
+        uvs=uvs,
+        materials=materials,
+        material_indices=material_indices,
+    )
+
+
 def parse_mesh_attachments(
     mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01
 ) -> Tuple[MeshData, Tuple[int, int]]:

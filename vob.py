@@ -10,8 +10,9 @@ from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
 
 from material import create_material
 from utils import trim_suffix
-from visual import (MeshData, VisualLoader, parse_multi_resolution_mesh,
-                    parse_visual_data, parse_visual_data_from_obj)
+from visual import (MeshData, VisualLoader, parse_decal,
+                    parse_multi_resolution_mesh, parse_visual_data,
+                    parse_visual_data_from_obj)
 
 invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
@@ -86,6 +87,14 @@ def index_vobs(
                 mrm = visuals_cache[visual_name]()
                 mesh_data = parse_multi_resolution_mesh(mrm, scale)  # type: ignore
                 vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name.lower()}_{obj.id}"
+
+            elif obj.visual.name.lower().endswith(".tga"):
+                mesh_data = parse_decal(obj)
+                if not mesh_data:
+                    error(f"Failed to parse decal data for {obj_name}")
+                    continue
+
+                vob_name = f"{trim_suffix(obj.visual.name.lower())}_{obj.id}"
 
             elif obj_type is VobType.oCItem:
                 visual_name = parse_item_visual_name(obj, vm)
