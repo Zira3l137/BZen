@@ -24,9 +24,8 @@ def index_textures(game_directory: Path) -> Dict[str, str]:
             if not entry.is_dir():
                 if entry.name.lower().endswith(".tga"):
                     textures[entry.name.lower()] = str(entry.path)
-                    continue
-
-            stack.extend([entry for entry in scandir(entry.path)])
+            else:
+                stack.extend([entry for entry in scandir(entry.path)])
 
     except Exception as e:
         error(f"Failed to index textures")
