@@ -48,6 +48,16 @@ class MeshData:
     def is_empty(self) -> bool:
         return len(self.vertices) == 0
 
+    def __hash__(self) -> int:
+        return (
+            len(self.vertices)
+            + len(self.faces)
+            + len(self.material_indices)
+            + len(self.normals)
+            + len(self.uvs)
+            + sum(hash(m) for m in self.materials)
+        )
+
 
 def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
     try:

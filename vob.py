@@ -255,16 +255,41 @@ def create_obj_from_vob_data(
     return obj
 
 
+def create_instance_from_vob_data(unique_name: str, obj: bpy.types.Object, vob_data: VobData) -> bpy.types.Object:
+    try:
+        instance = bpy.data.objects.new(unique_name, obj.data)
+        instance.location = vob_data.position or Vector((0, 0, 0))
+        instance.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
+
+        bpy.context.collection.objects.link(instance)
+    except Exception as e:
+        error(f"Failed to create instance {unique_name}")
+        raise e
+
+    return instance
+
+
 def create_vobs(vobs: Dict[str, VobData], textures: Dict[str, str]):
     try:
         success_count = 0
+        mesh_cache = set()
+        obj_cache = {}
 
         for vob_name, vob_data in vobs.items():
-            result = create_obj_from_vob_data(vob_name, vob_data, textures)
+            mesh_hash = hash(vob_data.mesh)
+            result = None
 
-            if not result:
-                warning(f"VOB {vob_name} has no mesh, skipping")
-                continue
+            if mesh_hash in mesh_cache:
+                existing_obj = obj_cache[mesh_hash]
+                result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
+            else:
+                result = create_obj_from_vob_data(vob_name, vob_data, textures)
+                if not result:
+                    warning(f"VOB {vob_name} has no mesh, skipping")
+                    continue
+
+                mesh_cache.add(mesh_hash)
+                obj_cache[mesh_hash] = result
 
             success_count += 1
 

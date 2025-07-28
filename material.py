@@ -13,6 +13,9 @@ class MaterialData:
     color: Tuple[float, float, float, float]
     texture: Optional[str] = field(default=None)
 
+    def __hash__(self):
+        return hash(self.name) + hash(self.color) + hash(self.texture)
+
 
 def index_textures(game_directory: Path) -> Dict[str, str]:
     try:
