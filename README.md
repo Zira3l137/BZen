@@ -76,5 +76,3 @@ I would also like to extend my gratitude to [Auronen](https://github.com/auronen
 
 This project is licensed under the terms of the license.md file.
 
-
-```
