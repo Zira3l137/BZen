@@ -18,6 +18,14 @@ BZen is a powerful command-line tool for converting 3D world files (ZENs) from t
 - **[Blender 4.0 - 4.2](https://www.blender.org/download/releases/):** The tool requires a path to the Blender executable to perform the conversion. (Only versions 4.0 and 4.2 are tested.)
 - **[ZenKit4Py](https://github.com/GothicKit/ZenKit4Py):** The script requires it for parsing the original game data. (This tool uses a [fork](https://github.com/Zira3l137/ZenKit4Py) of ZenKit4Py since the current version of the original library lacks some changes introduced by me. That is until the main contributor merges my pull request.)
 
+## 📦 Installation
+
+Install ZenKit4Py by using `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## 🚀 Usage
 
 BZen is a command-line tool. You need to provide paths to the input `.zen` file, your Blender executable, and the root directory of your Gothic game installation.
