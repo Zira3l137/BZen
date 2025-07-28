@@ -2,4 +2,4 @@ venv/
 python/
 res/
 __pycache__
-*.ps1
+.ps1
