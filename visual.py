@@ -75,7 +75,7 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
-        paths = [game_directory / "_work" / "data" / path / "_compiled" for path in ("meshes", "anims")]
+        paths = [find_case_insensitive_path(game_directory, "_work", "data", path, "_compiled") for path in ("meshes", "anims")]
         stack = [entry for path in paths for entry in scandir(path)]
         while stack:
             entry = stack.pop()
@@ -98,7 +98,7 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
 def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
         paths = [
-            game_directory / "data" / path
+            find_case_insensitive_path(game_directory, "data", path)
             for path in ("meshes.vdf", "meshes_addon.vdf", "anims.vdf", "anims_addon.vdf")
         ]
 
