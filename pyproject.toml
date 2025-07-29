@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bzen = "main:main"
+bzen = "BZen.main:main"
 
 [build-system]
 requires = ["setuptools>=77", "wheel"]
@@ -22,12 +22,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 # explicitly install each .py as a top-level module
-py-modules = [
-  "log",
-  "main",
-  "material",
-  "utils",
-  "visual",
-  "vob",
-  "zen_to_blend",
-]
+py-modules = ["BZen"]
