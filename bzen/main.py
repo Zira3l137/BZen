@@ -1,7 +1,6 @@
 import subprocess
 from argparse import ArgumentError, ArgumentParser
 from logging import error
-from os import remove
 from pathlib import Path
 from typing import Any, Dict
 

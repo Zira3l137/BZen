@@ -7,6 +7,7 @@ script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
     sys.path.append(str(script_dir.parent / "venv" / "Lib" / "site-packages"))
+    sys.path.append(str(script_dir.parent / ".venv" / "Lib" / "site-packages"))
 
 from logging import error, info
 
@@ -66,6 +67,14 @@ def main():
         info("Loading input file")
         if not input_path.suffix.lower() == ".zen":
             raise Exception("Input file must be a .zen file")
+        elif len(input_path.parts) == 1:
+            for path in find_case_insensitive_path(
+                game_directory, "_work", "data", "worlds"
+            ).glob("**/*.zen"):
+                if path.name.lower() == input_path.name.lower():
+                    input_path = path
+            if len(input_path.parts) == 1:
+                raise Exception("Could not find input file")
 
         info("Loading world")
         world = World.load(input_path)
