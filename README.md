@@ -20,11 +20,26 @@ BZen is a powerful command-line tool for converting 3D world files (ZENs) from t
 
 ## 📦 Installation
 
-Install ZenKit4Py by using `requirements.txt`:
+### Option 1:
+
+1. Clone repository:
+
+```bash
+git clone https://github.com/Zira3l137/BZen
+```
+
+2. Install requirements by using `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+### Option 2 - Install as a cli tool using pip:
+
+```bash
+pip install git+https://github.com/Zira3l137/BZen
+```
+
 
 ## 🚀 Usage
 
