@@ -1,5 +1,6 @@
 venv/
 python/
+blender/
 res/
 __pycache__
 *.ps1
