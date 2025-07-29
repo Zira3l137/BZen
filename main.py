@@ -40,15 +40,32 @@ def parse_args() -> Dict[str, Any]:
     return parser.parse_args().__dict__
 
 
-def main(
-    input: Path,
-    blender_exe: Path,
-    game_directory: Path,
-    output: Path,
-    scale: float,
-    verbosity: int,
-    waynet: bool = False,
-):
+def main():
+    args = parse_args()
+    
+    input: Path = args["input"]
+    blender_exe: Path = args["blender-exe"]
+    game_directory: Path = args["game-directory"]
+    output: Path | None = args["output"]
+    scale: float = args["scale"]
+    waynet: bool = args["waynet"]
+    verbosity: int = args["verbosity"]
+    
+    path_errors = []
+    for path in [input, blender_exe, game_directory]:
+        if not path.exists():
+            message = f'"{str(path)}" does not exist'
+            path_errors.append(message)
+            error(message)
+
+    if len(path_errors):
+        exit(f'Following provided paths do not exist: {", ".join(path_errors)}')
+
+    if not output:
+        output = Path.cwd() / input.with_suffix(".blend").name
+    elif output.exists():
+        remove(output)
+    
     blender_args = [
         blender_exe,
         "--background",
@@ -72,31 +89,4 @@ def main(
 
 
 if __name__ == "__main__":
-    args = parse_args()
-
-    logging_setup(args["verbosity"])
-
-    input: Path = args["input"]
-    blender_exe: Path = args["blender-exe"]
-    game_directory: Path = args["game-directory"]
-    output: Path | None = args["output"]
-    scale: float = args["scale"]
-    waynet: bool = args["waynet"]
-    verbosity: int = args["verbosity"]
-
-    path_errors = []
-    for path in [input, blender_exe, game_directory]:
-        if not path.exists():
-            message = f'"{str(path)}" does not exist'
-            path_errors.append(message)
-            error(message)
-
-    if len(path_errors):
-        exit(f'Following provided paths do not exist: {", ".join(path_errors)}')
-
-    if not output:
-        output = Path.cwd() / input.with_suffix(".blend").name
-    elif output.exists():
-        remove(output)
-
-    main(input, blender_exe, game_directory, output, scale, verbosity, waynet)
+    main()
