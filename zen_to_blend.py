@@ -14,11 +14,9 @@ from zenkit import DaedalusVm, GameVersion, World
 
 from log import logging_setup
 from material import index_textures
-from utils import blender_save_changes
+from utils import blender_save_changes, find_case_insensitive_path
 from visual import index_visuals, parse_world_mesh
 from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
-
-GOTHIC_DAT_RELATIVE_PATH = "_work/data/Scripts/_compiled/gothic.dat"
 
 
 def parse_args() -> Dict[str, Any]:
@@ -60,18 +58,15 @@ def main():
         if not input_path.suffix.lower() == ".zen":
             raise Exception("Input file must be a .zen file")
 
-        game_version = (
-            GameVersion.GOTHIC2 if "gothicii" in game_directory.stem.lower().replace(" ", "") else GameVersion.GOTHIC1
-        )
-        world = World.load(input_path, game_version)
-        info(f"Loading {game_version.name} world")
+        info("Loading world")
+        world = World.load(input_path)
 
         if not len(world.root_objects):
             error("Zenkit error: could not load world")
             raise Exception("Zenkit error: could not load world")
 
         info("Loading Daedalus virtual machine")
-        vm = DaedalusVm.load(game_directory / GOTHIC_DAT_RELATIVE_PATH)
+        vm = DaedalusVm.load(find_case_insensitive_path(game_directory, "_work", "data", "scripts", "_compiled", "gothic.dat"))
 
         info("Indexing textures")
         textures = index_textures(game_directory)
