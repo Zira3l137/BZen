@@ -10,7 +10,7 @@ license = "MIT"
 license-files = ["license.md"]
 requires-python = ">=3.8"
 dependencies = [
-    "Zenkit4py @ git+https://github.com/Zira3l137/ZenKit4Py.git"
+    "zenkit @ git+https://github.com/Zira3l137/ZenKit4Py.git"
 ]
 
 [project.scripts]
