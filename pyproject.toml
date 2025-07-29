@@ -3,21 +3,18 @@ name = "bzen"
 version = "0.1.0"
 description = "BZen is a powerful command-line tool for converting 3D world files (ZENs) from the Gothic and Gothic II games into Blender projects."
 authors = [
-    { name = "Zira3l137" },
+    { name = "Zira3l137" }
 ]
 readme = "README.md"
-
-requires-python = ">=3.10"
+license = { file = "license.md" }
+requires-python = ">=3.8"
 dependencies = [
-    "zenkit @ git+https://github.com/Zira3l137/ZenKit4Py.git",
+    "zenkit @ git+https://github.com/Zira3l137/ZenKit4Py.git"
 ]
 
 [project.scripts]
 bzen = "main:main"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages]
-find = {where = ["."]}
