@@ -79,8 +79,6 @@ def main():
 
     if not output:
         output = Path.cwd() / input.with_suffix(".blend").name
-    elif output.exists():
-        remove(output)
 
     blender_args = [
         blender_exe,
