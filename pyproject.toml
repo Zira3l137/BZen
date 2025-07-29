@@ -6,7 +6,7 @@ authors = [{ name = "Zira3l137" }]
 readme = "README.md"
 license = "MIT"
 license-files = ["license.md"]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = ["zenkit @ git+https://github.com/Zira3l137/ZenKit4Py.git"]
 
 [project.scripts]
