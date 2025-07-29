@@ -6,17 +6,16 @@ from typing import Any, Dict
 script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
-    sys.path.append(str(script_dir / "venv" / "Lib" / "site-packages"))
+    sys.path.append(str(script_dir.parent / "venv" / "Lib" / "site-packages"))
 
 from logging import error, info
-
-from zenkit import DaedalusVm, GameVersion, World
 
 from log import logging_setup
 from material import index_textures
 from utils import blender_save_changes, find_case_insensitive_path
 from visual import index_visuals, parse_world_mesh
 from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
+from zenkit import DaedalusVm, World
 
 
 def parse_args() -> Dict[str, Any]:
@@ -31,11 +30,19 @@ def parse_args() -> Dict[str, Any]:
 
     try:
         parser.add_argument("input", type=Path, help="Path to the input file")
-        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
+        parser.add_argument(
+            "game-directory", type=Path, help="Path to the game directory"
+        )
         parser.add_argument("output", type=Path, help="Path to the output file")
-        parser.add_argument("scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
-        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
-        parser.add_argument("verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
+        parser.add_argument(
+            "scale", type=float, default=0.01, help="Scale factor (default: 0.01)"
+        )
+        parser.add_argument(
+            "-w", "--waynet", action="store_true", help="Parse waynet (default: False)"
+        )
+        parser.add_argument(
+            "verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)"
+        )
 
     except ArgumentError as e:
         raise e
@@ -52,7 +59,9 @@ def main():
         scale: float = args["scale"]
         should_parse_waynet: bool = args["waynet"]
 
-        logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
+        logging_setup(
+            args["verbosity"], output_path.with_name(f"{output_path.stem}.log")
+        )
 
         info("Loading input file")
         if not input_path.suffix.lower() == ".zen":
@@ -66,7 +75,11 @@ def main():
             raise Exception("Zenkit error: could not load world")
 
         info("Loading Daedalus virtual machine")
-        vm = DaedalusVm.load(find_case_insensitive_path(game_directory, "_work", "data", "scripts", "_compiled", "gothic.dat"))
+        vm = DaedalusVm.load(
+            find_case_insensitive_path(
+                game_directory, "_work", "data", "scripts", "_compiled", "gothic.dat"
+            )
+        )
 
         info("Indexing textures")
         textures = index_textures(game_directory)

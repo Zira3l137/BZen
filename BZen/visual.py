@@ -6,14 +6,24 @@ from os import scandir
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, TypeAlias
 
-from mathutils import Matrix, Vector
-from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
-                    MultiResolutionMesh, Vfs, VfsNode, VirtualObject, World)
-
 from material import MaterialData
-from utils import suffix, with_suffix
+from mathutils import Matrix, Vector
+from utils import find_case_insensitive_path, suffix, with_suffix
+from zenkit import (
+    Model,
+    ModelHierarchy,
+    ModelMesh,
+    MorphMesh,
+    MultiResolutionMesh,
+    Vfs,
+    VfsNode,
+    VirtualObject,
+    World,
+)
 
-VobVisual: TypeAlias = MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy
+VobVisual: TypeAlias = (
+    MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy
+)
 VisualLoader: TypeAlias = Callable[[], Optional[VobVisual]]
 
 
@@ -75,16 +85,23 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
-        paths = [find_case_insensitive_path(game_directory, "_work", "data", path, "_compiled") for path in ("meshes", "anims")]
+        paths = [
+            find_case_insensitive_path(
+                game_directory, "_work", "data", path, "_compiled"
+            )
+            for path in ("meshes", "anims")
+        ]
         stack = [entry for path in paths for entry in scandir(path)]
         while stack:
             entry = stack.pop()
             entry_ext = suffix(entry.name).lower()
             if not entry.is_dir():
                 if entry_ext in [ve.value for ve in VisualExtension]:
-                    visuals[entry.name.lower()] = lambda path=entry.path, extension=VisualExtension(
-                        entry_ext
-                    ): load_visual(path, extension)
+                    visuals[entry.name.lower()] = (
+                        lambda path=entry.path, extension=VisualExtension(
+                            entry_ext
+                        ): load_visual(path, extension)
+                    )
             else:
                 stack.extend([entry for entry in scandir(entry.path)])
 
@@ -99,7 +116,12 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
     try:
         paths = [
             find_case_insensitive_path(game_directory, "data", path)
-            for path in ("meshes.vdf", "meshes_addon.vdf", "anims.vdf", "anims_addon.vdf")
+            for path in (
+                "meshes.vdf",
+                "meshes_addon.vdf",
+                "anims.vdf",
+                "anims_addon.vdf",
+            )
         ]
 
         for path in paths:
@@ -110,8 +132,10 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
                 node = stack.pop()
                 extension = suffix(node.name).lower()
                 if extension in [ve.value for ve in VisualExtension]:
-                    visuals[node.name.lower()] = lambda node=node, extension=VisualExtension(extension): load_visual(
-                        node, extension
+                    visuals[node.name.lower()] = (
+                        lambda node=node, extension=VisualExtension(
+                            extension
+                        ): load_visual(node, extension)
                     )
                 if node.is_dir():
                     stack.extend(node.children)
@@ -123,7 +147,9 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
     info(f"Indexed from archives: {len(visuals)}")
 
 
-def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> Optional[VobVisual]:
+def load_visual(
+    path: str | Path | VfsNode, extension: VisualExtension
+) -> Optional[VobVisual]:
     try:
         match extension:
 
@@ -147,7 +173,9 @@ def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> Optio
         return None
 
 
-def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 0.01) -> Optional[MeshData]:
+def parse_visual_data(
+    name: str, cache: Dict[str, VisualLoader], scale: float = 0.01
+) -> Optional[MeshData]:
     try:
         extension = suffix(name).lower()
         if extension == "" or extension not in compiled:
@@ -201,11 +229,23 @@ def parse_visual_data_from_obj(
 def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     try:
         bsp, mesh = wrld.bsp_tree, wrld.mesh
-        vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
+        vertices, uvs, faces, normals, materials, material_indices = (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         for mat in mesh.materials:
             mat_color = mat.color
-            color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
+            color = (
+                mat_color.r / 255,
+                mat_color.g / 255,
+                mat_color.b / 255,
+                mat_color.a / 255,
+            )
             materials.append(MaterialData(mat.name, color, mat.texture))
 
         vertex_cache, polygon_cache = {}, set()
@@ -218,9 +258,16 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
 
         for leaf_index in leaf_polygon_indices:
             polygon = polygons[leaf_index]
-            position_indices, feature_indices = polygon.position_indices, polygon.feature_indices
+            position_indices, feature_indices = (
+                polygon.position_indices,
+                polygon.feature_indices,
+            )
 
-            if polygon in polygon_cache or polygon.is_portal or polygon.is_ghost_occluder:
+            if (
+                polygon in polygon_cache
+                or polygon.is_portal
+                or polygon.is_ghost_occluder
+            ):
                 continue
 
             polygon_cache.add(polygon)
@@ -258,16 +305,32 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     return MeshData(vertices, faces, normals, uvs, materials, material_indices)
 
 
-def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -> MeshData:
+def parse_multi_resolution_mesh(
+    mrm: MultiResolutionMesh, scale: float = 0.01
+) -> MeshData:
     try:
-        vertices, uvs, faces, normals, materials, material_indices = [], [], [], [], [], []
+        vertices, uvs, faces, normals, materials, material_indices = (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         for mat in mrm.material:
             mat_color = mat.color
-            color = mat_color.r / 255, mat_color.g / 255, mat_color.b / 255, mat_color.a / 255
+            color = (
+                mat_color.r / 255,
+                mat_color.g / 255,
+                mat_color.b / 255,
+                mat_color.a / 255,
+            )
             materials.append(MaterialData(mat.name, color, mat.texture))
 
-        positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
+        positions, vertex_cache = [
+            Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions
+        ], {}
         for submesh_index, submesh in enumerate(mrm.submeshes):
             wedges = submesh.wedges
             triangles = submesh.triangles
@@ -277,7 +340,9 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
                 face_indices = []
                 for i in range(3):
                     wedge = wedges[triangle_wedges[i]]
-                    normals.append(Vector((wedge.normal.x, wedge.normal.z, wedge.normal.y)))
+                    normals.append(
+                        Vector((wedge.normal.x, wedge.normal.z, wedge.normal.y))
+                    )
                     pos = positions[wedge.index] * scale
                     blender_pos = (float(pos.x), float(pos.z), float(pos.y))
 
@@ -311,8 +376,12 @@ def parse_decal(obj: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
         bounding_box_min = obj.bbox.min
         bounding_box_max = obj.bbox.max
 
-        min_bound = (Vector((bounding_box_min.x, bounding_box_min.z, bounding_box_min.y)) * scale) - origin
-        max_bound = (Vector((bounding_box_max.x, bounding_box_max.z, bounding_box_max.y)) * scale) - origin
+        min_bound = (
+            Vector((bounding_box_min.x, bounding_box_min.z, bounding_box_min.y)) * scale
+        ) - origin
+        max_bound = (
+            Vector((bounding_box_max.x, bounding_box_max.z, bounding_box_max.y)) * scale
+        ) - origin
 
         v0 = min_bound  # Bottom-left
         v1 = Vector((max_bound.x, max_bound.y, min_bound.z))  # Bottom-right
@@ -372,7 +441,14 @@ def parse_mesh_attachments(
     try:
         nodes = mdh.nodes
         attachments = mdm.attachments
-        vertices, faces, normals, uvs, materials, material_indices = [], [], [], [], [], []
+        vertices, faces, normals, uvs, materials, material_indices = (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
         vertex_offset, material_offset = 0, 0
         buffer = {}
 
@@ -393,7 +469,14 @@ def parse_mesh_attachments(
             ).to_4x4()
 
             translation = (
-                Vector((node_transform.columns[3].x, node_transform.columns[3].y, node_transform.columns[3].z)) * scale
+                Vector(
+                    (
+                        node_transform.columns[3].x,
+                        node_transform.columns[3].y,
+                        node_transform.columns[3].z,
+                    )
+                )
+                * scale
             )
             node_matrix.translation = translation
             world_matrix = Matrix()
@@ -407,10 +490,16 @@ def parse_mesh_attachments(
             buffer[index] = world_matrix
             world_matrix = world_matrix @ BASE_ROTATION_MATRIX @ BASE_SCALE_MATRIX
 
-            vertices_relative_to_parent = [world_matrix @ vertex for vertex in mesh.vertices]
+            vertices_relative_to_parent = [
+                world_matrix @ vertex for vertex in mesh.vertices
+            ]
 
-            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
-            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
+            faces.extend(
+                tuple(idx + vertex_offset for idx in face) for face in mesh.faces
+            )
+            material_indices.extend(
+                idx + material_offset for idx in mesh.material_indices
+            )
             materials.extend(mesh.materials)
             vertices.extend(vertices_relative_to_parent)
             normals.extend(mesh.normals)
@@ -423,15 +512,22 @@ def parse_mesh_attachments(
         error("Failed to parse mesh attachments.")
         raise e
 
-    return MeshData(vertices, faces, normals, uvs, materials, material_indices), (vertex_offset, material_offset)
+    return MeshData(vertices, faces, normals, uvs, materials, material_indices), (
+        vertex_offset,
+        material_offset,
+    )
 
 
 def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> MeshData:
     try:
         soft_skin_meshes = mdm.meshes
         root_translation = mdh.root_translation
-        root_translation = Vector((root_translation.x, root_translation.z, root_translation.y)) * scale
-        parsed_attachments, (vertex_offset, material_offset) = parse_mesh_attachments(mdm, mdh, scale)
+        root_translation = (
+            Vector((root_translation.x, root_translation.z, root_translation.y)) * scale
+        )
+        parsed_attachments, (vertex_offset, material_offset) = parse_mesh_attachments(
+            mdm, mdh, scale
+        )
         vertices, faces, normals, uvs, materials, material_indices = (
             parsed_attachments.vertices,
             parsed_attachments.faces,
@@ -444,11 +540,15 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Mesh
         for soft_skin_mesh in soft_skin_meshes:
             mesh = parse_multi_resolution_mesh(soft_skin_mesh.mesh, scale)
 
-            vertices_relative_to_root = [vertex - root_translation for vertex in mesh.vertices]
+            vertices_relative_to_root = [
+                vertex - root_translation for vertex in mesh.vertices
+            ]
             vertices.extend(vertices_relative_to_root)
 
             faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)  # type: ignore
-            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
+            material_indices.extend(
+                idx + material_offset for idx in mesh.material_indices
+            )
             materials.extend(mesh.materials)
             vertices.extend(mesh.vertices)
             normals.extend(mesh.normals)

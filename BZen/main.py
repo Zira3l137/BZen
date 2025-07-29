@@ -1,16 +1,9 @@
 import subprocess
-import sys
 from argparse import ArgumentError, ArgumentParser
 from logging import error
 from os import remove
 from pathlib import Path
 from typing import Any, Dict
-
-script_dir = Path(__file__).parent
-if str(script_dir) not in sys.path:
-    sys.path.append(str(script_dir))
-
-from log import logging_setup
 
 BLENDER_SCRIPT = str(Path(__file__).parent / "zen_to_blend.py")
 
@@ -29,12 +22,35 @@ def parse_args() -> Dict[str, Any]:
     parser = ArgumentParser()
     try:
         parser.add_argument("input", type=Path, help="Path to the input file")
-        parser.add_argument("blender-exe", type=Path, help="Path to the blender executable")
-        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
-        parser.add_argument("-o", "--output", type=Path, help="Path to the output file (defaults to current directory)")
-        parser.add_argument("-s", "--scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
-        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
-        parser.add_argument("-v", "--verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
+        parser.add_argument(
+            "blender-exe", type=Path, help="Path to the blender executable"
+        )
+        parser.add_argument(
+            "game-directory", type=Path, help="Path to the game directory"
+        )
+        parser.add_argument(
+            "-o",
+            "--output",
+            type=Path,
+            help="Path to the output file (defaults to current directory)",
+        )
+        parser.add_argument(
+            "-s",
+            "--scale",
+            type=float,
+            default=0.01,
+            help="Scale factor (default: 0.01)",
+        )
+        parser.add_argument(
+            "-w", "--waynet", action="store_true", help="Parse waynet (default: False)"
+        )
+        parser.add_argument(
+            "-v",
+            "--verbosity",
+            type=int,
+            default=0,
+            help="Verbosity level (0-3) (default: 0)",
+        )
     except ArgumentError as e:
         raise e
     return parser.parse_args().__dict__
@@ -42,7 +58,7 @@ def parse_args() -> Dict[str, Any]:
 
 def main():
     args = parse_args()
-    
+
     input: Path = args["input"]
     blender_exe: Path = args["blender-exe"]
     game_directory: Path = args["game-directory"]
@@ -50,7 +66,7 @@ def main():
     scale: float = args["scale"]
     waynet: bool = args["waynet"]
     verbosity: int = args["verbosity"]
-    
+
     path_errors = []
     for path in [input, blender_exe, game_directory]:
         if not path.exists():
@@ -65,7 +81,7 @@ def main():
         output = Path.cwd() / input.with_suffix(".blend").name
     elif output.exists():
         remove(output)
-    
+
     blender_args = [
         blender_exe,
         "--background",
