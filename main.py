@@ -84,9 +84,15 @@ if __name__ == "__main__":
     waynet: bool = args["waynet"]
     verbosity: int = args["verbosity"]
 
-    if any([not path.exists() for path in [input, blender_exe, game_directory]]):
-        error("Input file, blender executable, or game directory does not exist")
-        exit(1)
+    path_errors = []
+    for path in [input, blender_exe, game_directory]:
+        if not path.exists():
+            message = f'"{str(path)}" does not exist'
+            path_errors.append(message)
+            error(message)
+
+    if len(path_errors):
+        exit(f'Following provided paths do not exist: {", ".join(path_errors)}')
 
     if not output:
         output = Path.cwd() / input.with_suffix(".blend").name
