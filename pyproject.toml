@@ -6,14 +6,19 @@ authors = [
     { name = "Zira3l137" }
 ]
 readme = "README.md"
+license = "MIT"
+license-files = ["license.md"]
 requires-python = ">=3.8"
 dependencies = [
-    "zenkit @ git+https://github.com/Zira3l137/ZenKit4Py.git"
+    "Zenkit4py @ git+https://github.com/Zira3l137/ZenKit4Py.git"
 ]
 
 [project.scripts]
 bzen = "main:main"
 
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["log", "main", "material", "utils", "visual", "vob", "zen_to_blend"]
