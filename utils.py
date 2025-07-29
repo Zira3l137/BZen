@@ -18,6 +18,11 @@ def find_case_insensitive_path(base: Path | str, *relative_parts: str) -> Path:
     current = base if isinstance(base, Path) else Path(base)
     
     for part in relative_parts:
+        exact = current / part
+        if exact.exists():
+            current = exact
+            continue
+            
         matches = [entry for entry in current.iterdir() if entry.name.lower() == part.lower()]
         
         if not matches:
