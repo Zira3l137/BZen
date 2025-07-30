@@ -20,7 +20,7 @@ def parse_args() -> Dict[str, Any]:
     """
     parser = ArgumentParser()
     try:
-        parser.add_argument("input", type=Path, help="Path to the input file")
+        parser.add_argument("input", type=str, help="Input file name")
         parser.add_argument(
             "blender-exe", type=Path, help="Path to the blender executable"
         )
@@ -58,7 +58,7 @@ def parse_args() -> Dict[str, Any]:
 def main():
     args = parse_args()
 
-    input: Path = args["input"]
+    input: str = args["input"]
     blender_exe: Path = args["blender-exe"]
     game_directory: Path = args["game-directory"]
     output: Path | None = args["output"]
@@ -67,7 +67,7 @@ def main():
     verbosity: int = args["verbosity"]
 
     path_errors = []
-    for path in [input, blender_exe, game_directory]:
+    for path in [blender_exe, game_directory]:
         if not path.exists():
             message = f'"{str(path)}" does not exist'
             path_errors.append(message)
@@ -77,7 +77,7 @@ def main():
         exit(f'Following provided paths do not exist: {", ".join(path_errors)}')
 
     if not output:
-        output = Path.cwd() / input.with_suffix(".blend").name
+        output = Path.cwd() / Path(input).with_suffix(".blend").name
 
     blender_args = [
         blender_exe,
