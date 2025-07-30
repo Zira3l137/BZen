@@ -13,10 +13,15 @@ from logging import error, info
 
 from log import logging_setup
 from material import index_textures
-from utils import blender_save_changes, find_case_insensitive_path
+from utils import blender_save_changes, canonical_case_path, suffix
 from visual import index_visuals, parse_world_mesh
-from vob import create_obj_from_mesh, create_vobs, index_vobs, parse_waynet
-from zenkit import DaedalusVm, World
+from vob import (
+    create_obj_from_mesh,
+    create_vobs,
+    parse_blender_obj_data_from_wrld,
+    parse_waynet,
+)
+from zenkit import DaedalusVm, Vfs, VfsNode, World
 
 
 def parse_args() -> Dict[str, Any]:
@@ -30,7 +35,7 @@ def parse_args() -> Dict[str, Any]:
     parser = ArgumentParser()
 
     try:
-        parser.add_argument("input", type=Path, help="Path to the input file")
+        parser.add_argument("input", type=str, help="Input file name")
         parser.add_argument(
             "game-directory", type=Path, help="Path to the game directory"
         )
@@ -51,10 +56,71 @@ def parse_args() -> Dict[str, Any]:
     return parser.parse_args(args).__dict__
 
 
+def load_world_from_archive(name: str, game_directory: Path) -> World:
+    matches: Dict[Path, VfsNode] = {}
+    for path in (
+        canonical_case_path(game_directory / "data" / archive)
+        for archive in ["worlds.vdf", "worlds_addon.vdf"]
+    ):
+        if not path.exists():
+            continue
+
+        vfs = Vfs()
+        vfs.mount_disk(path)
+        stack = [vfs.root]
+        while stack:
+            node = stack.pop()
+            if node.name.lower() == name.lower():
+                matches[path] = node
+                break
+            if node.is_dir():
+                stack.extend(node.children)
+
+    if matches:
+        archive_names, nodes = tuple(matches.keys()), tuple(matches.values())
+        info(f"Loading from archive: {archive_names[-1]}")
+        return World.load(nodes[-1])
+    else:
+        raise Exception(
+            'Could not find world in "data/worlds.vdf" or "data/worlds_addon.vdf"'
+        )
+
+
+def load_world_from_disk(name: str, game_directory: Path) -> World:
+    info("Loading world from disk")
+    for path in canonical_case_path(game_directory / "_work" / "data" / "worlds").glob(
+        "**/*.zen"
+    ):
+        if path.name.lower() == name.lower():
+            return World.load(path)
+    else:
+        raise Exception('Could not find world in ".../_work/data/worlds"')
+
+
+def load_world(input: str, game_directory: Path) -> World:
+    if suffix(input, True).lower() != ".zen":
+        raise Exception("Input file must be a .zen file")
+
+    if not ":" in input.lower():
+        if len(Path(input).parts) == 1:
+            return load_world_from_archive(str(input), game_directory)
+        return World.load(input)
+
+    prefix, name = input.split(":", 1)
+
+    match prefix.lower():
+        case "w":
+            return load_world_from_disk(name, game_directory)
+        case "v":
+            return load_world_from_archive(name, game_directory)
+        case _:
+            raise Exception("Invalid prefix")
+
+
 def main():
     try:
         args = parse_args()
-        input_path: Path = args["input"]
+        input_file_name: str = args["input"]
         game_directory: Path = args["game-directory"]
         output_path: Path = args["output"]
         scale: float = args["scale"]
@@ -64,20 +130,8 @@ def main():
             args["verbosity"], output_path.with_name(f"{output_path.stem}.log")
         )
 
-        info("Loading input file")
-        if not input_path.suffix.lower() == ".zen":
-            raise Exception("Input file must be a .zen file")
-        elif len(input_path.parts) == 1:
-            for path in find_case_insensitive_path(
-                game_directory, "_work", "data", "worlds"
-            ).glob("**/*.zen"):
-                if path.name.lower() == input_path.name.lower():
-                    input_path = path
-            if len(input_path.parts) == 1:
-                raise Exception("Could not find input file")
-
-        info("Loading world")
-        world = World.load(input_path)
+        info(f"Loading world")
+        world = load_world(input_file_name, game_directory)
 
         if not len(world.root_objects):
             error("Zenkit error: could not load world")
@@ -85,8 +139,13 @@ def main():
 
         info("Loading Daedalus virtual machine")
         vm = DaedalusVm.load(
-            find_case_insensitive_path(
-                game_directory, "_work", "data", "scripts", "_compiled", "gothic.dat"
+            canonical_case_path(
+                game_directory
+                / "_work"
+                / "data"
+                / "scripts"
+                / "_compiled"
+                / "gothic.dat"
             )
         )
 
@@ -99,7 +158,7 @@ def main():
         visuals = index_visuals(game_directory)
 
         info("Indexing VOBs")
-        vobs = index_vobs(world, vm, visuals, scale)
+        vobs = parse_blender_obj_data_from_wrld(world, vm, visuals, scale)
 
         if should_parse_waynet:
             info("Parsing waynet")
