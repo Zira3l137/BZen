@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeAlias
 
 from material import MaterialData
 from mathutils import Matrix, Vector
-from utils import find_case_insensitive_path, suffix, with_suffix
+from utils import canonical_case_path, suffix, with_suffix
 from zenkit import (
     Model,
     ModelHierarchy,
@@ -87,9 +87,7 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
         paths = [
-            find_case_insensitive_path(
-                game_directory, "_work", "data", path, "_compiled"
-            )
+            canonical_case_path(game_directory / "_work" / "data" / path / "_compiled")
             for path in ("meshes", "anims")
         ]
         stack = [entry for path in paths for entry in scandir(path)]
@@ -116,7 +114,7 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
 def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
         paths = [
-            find_case_insensitive_path(game_directory, "data", path)
+            canonical_case_path(game_directory / "data" / path)
             for path in (
                 "meshes.vdf",
                 "meshes_addon.vdf",
@@ -208,7 +206,7 @@ def parse_visual_data(
         raise e
 
 
-def parse_visual_data_from_obj(
+def parse_visual_data_from_vob(
     obj: VirtualObject, cache: Dict[str, VisualLoader], scale: float = 0.01
 ) -> Optional[MeshData]:
     try:
