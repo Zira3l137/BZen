@@ -1,18 +1,32 @@
 import math
 from dataclasses import dataclass, field
 from logging import error, info, warning
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, cast
 
 import bpy
-from mathutils import Euler, Matrix, Vector
-from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
-                    Vec3f, VirtualObject, VobType, World)
-
 from material import create_material
+from mathutils import Euler, Matrix, Vector
 from utils import trim_suffix
-from visual import (MeshData, VisualLoader, parse_decal,
-                    parse_multi_resolution_mesh, parse_visual_data,
-                    parse_visual_data_from_obj)
+from visual import (
+    MeshData,
+    VisualLoader,
+    parse_decal,
+    parse_multi_resolution_mesh,
+    parse_visual_data,
+    parse_visual_data_from_vob,
+)
+from zenkit import (
+    DaedalusInstanceType,
+    DaedalusVm,
+    ItemInstance,
+    Mat3x3,
+    MultiResolutionMesh,
+    Vec3f,
+    VirtualObject,
+    VisualType,
+    VobType,
+    World,
+)
 
 invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
@@ -35,15 +49,20 @@ invisible_vob = {
 }
 
 
+class ParseMeshError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
 @dataclass(frozen=True, slots=True)
-class VobData:
+class BlenderObjectData:
     name: str = field(default_factory=str)
     mesh: Optional[MeshData] = None
     position: Vector = field(default_factory=Vector)
     rotation: Euler = field(default_factory=Euler)
 
 
-def get_vob_euler_rotation(matrix: Mat3x3) -> Euler:
+def get_blender_obj_euler_rotation(matrix: Mat3x3) -> Euler:
     columns = matrix.columns
     c0, c1, c2 = columns[0], columns[1], columns[2]
 
@@ -57,108 +76,218 @@ def get_vob_euler_rotation(matrix: Mat3x3) -> Euler:
     return euler
 
 
-def get_vob_position(vector: Vec3f, scale: float = 0.01) -> Vector:
+def get_blender_obj_position(vector: Vec3f, scale: float = 0.01) -> Vector:
     x, y, z = vector
     return Vector((x * scale, z * scale, y * scale))
 
 
-def index_vobs(
-    world: World, vm: DaedalusVm, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
-) -> Dict[str, VobData]:
+def get_special_blender_obj_data(
+    vob: VirtualObject,
+    mesh_cache: Dict[str, MeshData],
+    visuals_cache: Dict[str, VisualLoader],
+    scale: float = 0.01,
+) -> Tuple[str, BlenderObjectData]:
+    vob_name = vob.name.lower()
+    vob_type = vob.type
+
+    if vob_type not in invisible_vob:
+        raise ValueError(f"Unknown invisible vob type: {vob_type}")
+
+    vob_visual_name = invisible_vob[vob_type]
+    blender_obj_name = (
+        f"invisible:{vob_name}_{vob.id}"
+        if vob_name
+        else f"invisible:{vob_type.name}_{vob.id}"
+    )
+    mesh_data = None
+
+    if vob_visual_name in mesh_cache:
+        mesh_data = mesh_cache[vob_visual_name]
+    else:
+        mrm = cast(MultiResolutionMesh, visuals_cache[vob_visual_name]())
+        mesh_data = parse_multi_resolution_mesh(mrm, scale)
+        if not mesh_data:
+            raise ParseMeshError(f'Could not retrieve mesh data for "{vob_name}"')
+        mesh_cache[vob_visual_name] = mesh_data
+
+    return blender_obj_name, BlenderObjectData(
+        name=vob_name,
+        mesh=mesh_data,
+        position=get_blender_obj_position(vob.position, scale),
+        rotation=get_blender_obj_euler_rotation(vob.rotation),
+    )
+
+
+def get_decal_blender_obj_data(
+    vob: VirtualObject, mesh_cache: Dict[str, MeshData], scale: float = 0.01
+) -> Tuple[str, BlenderObjectData]:
+    blender_obj_name = f"{trim_suffix(vob.visual.name).lower()}_{vob.id}"
+    vob_visual_name = vob.visual.name
+    mesh_data = None
+
+    if vob_visual_name in mesh_cache:
+        mesh_data = mesh_cache[vob_visual_name]
+    else:
+        mesh_data = parse_decal(vob, scale)
+        if not mesh_data:
+            raise ParseMeshError(
+                f'Could not retrieve mesh data for "{blender_obj_name}"'
+            )
+        mesh_cache[vob_visual_name] = mesh_data
+
+    return blender_obj_name, BlenderObjectData(
+        name=vob.name.lower(),
+        mesh=mesh_data,
+        position=get_blender_obj_position(vob.position, scale),
+        rotation=get_blender_obj_euler_rotation(vob.rotation),
+    )
+
+
+def get_item_blender_obj_data(
+    vob: VirtualObject,
+    vm: DaedalusVm,
+    mesh_cache: Dict[str, MeshData],
+    visuals_cache: Dict[str, VisualLoader],
+    scale: float = 0.01,
+) -> Tuple[str, BlenderObjectData]:
+    item_visual_name = parse_item_visual_name(vob, vm)
+    if not item_visual_name:
+        raise Exception(f"Item {vob.name} has no visual")
+    item_visual_name = item_visual_name.lower()
+
+    blender_obj_name = f"{trim_suffix(item_visual_name).lower()}_{vob.id}"
+    vob_visual_name = vob.visual.name
+    mesh_data = None
+
+    if vob_visual_name in mesh_cache:
+        mesh_data = mesh_cache[vob_visual_name]
+    else:
+        mesh_data = parse_visual_data(item_visual_name, visuals_cache, scale)
+        if not mesh_data:
+            raise ParseMeshError(
+                f'Could not retrieve mesh data for "{blender_obj_name}"'
+            )
+        mesh_cache[vob_visual_name] = mesh_data
+
+    return blender_obj_name, BlenderObjectData(
+        name=vob.name.lower(),
+        mesh=mesh_data,
+        position=get_blender_obj_position(vob.position, scale),
+        rotation=get_blender_obj_euler_rotation(vob.rotation),
+    )
+
+
+def get_generic_blender_obj_data(
+    vob: VirtualObject,
+    mesh_cache: Dict[str, MeshData],
+    visuals_cache: Dict[str, VisualLoader],
+    scale: float = 0.01,
+) -> Tuple[str, BlenderObjectData]:
+    vob_visual_name = vob.visual.name
+    blender_obj_name = f"{trim_suffix(vob_visual_name).lower()}_{vob.id}"
+    mesh_data = None
+
+    if vob_visual_name in mesh_cache:
+        mesh_data = mesh_cache[vob_visual_name]
+    else:
+        mesh_data = parse_visual_data_from_vob(vob, visuals_cache, scale)
+        if not mesh_data:
+            raise ParseMeshError(
+                f'Could not retrieve mesh data for "{blender_obj_name}"'
+            )
+        mesh_cache[vob_visual_name] = mesh_data
+
+    return blender_obj_name, BlenderObjectData(
+        name=vob.name.lower(),
+        mesh=mesh_data,
+        position=get_blender_obj_position(vob.position, scale),
+        rotation=get_blender_obj_euler_rotation(vob.rotation),
+    )
+
+
+def parse_blender_obj_data_from_wrld(
+    world: World,
+    vm: DaedalusVm,
+    visuals_cache: Dict[str, VisualLoader],
+    scale: float = 0.01,
+) -> Dict[str, BlenderObjectData]:
     try:
-        vobs: Dict[str, VobData] = {}
+        blender_objects: Dict[str, BlenderObjectData] = {}
         mesh_cache: Dict[str, MeshData] = {}
         stack = world.root_objects
+        count = 0
 
         while stack:
-            mesh_data = None
-            vob_name = None
+            vob = stack.pop()
+            vob_type = vob.type
+            vob_visual_type = vob.visual.type
 
-            obj = stack.pop()
-            obj_type = obj.type
-            obj_name = obj.name.lower()
-
-            if obj_type is VobType.zCVobLevelCompo:
-                stack.extend(obj.children)
-                continue
-
-            elif obj_type in invisible_vob:
-                visual_name = invisible_vob[obj_type]
-                mrm = visuals_cache[visual_name]()
-                mesh_data = parse_multi_resolution_mesh(mrm, scale)  # type: ignore
-                vob_name = obj_name if obj_name != "" and obj_name not in vobs else f"{obj_type.name.lower()}_{obj.id}"
-
-            elif obj.visual.name.lower().endswith(".tga"):
-                mesh_data = parse_decal(obj)
-                if not mesh_data:
-                    error(f"Failed to parse decal data for {obj_name}")
+            try:
+                # Skip level mesh
+                if (
+                    vob_type is VobType.zCVobLevelCompo
+                    or vob_visual_type is VisualType.PARTICLE_EFFECT
+                ):
+                    stack.extend(vob.children)
                     continue
 
-                vob_name = f"{trim_suffix(obj.visual.name.lower())}_{obj.id}"
+                # Invisible VOBs
+                if vob_type in invisible_vob:
+                    bobj_name, bobj_data = get_special_blender_obj_data(
+                        vob, mesh_cache, visuals_cache, scale
+                    )
+                    blender_objects[bobj_name] = bobj_data
 
-            elif obj_type is VobType.oCItem:
-                visual_name = parse_item_visual_name(obj, vm)
-                if not visual_name:
-                    error(f"Item {obj_name} has no visual")
-                    continue
+                # Decals
+                elif vob_visual_type is VisualType.DECAL:
+                    bobj_name, bobj_data = get_decal_blender_obj_data(
+                        vob, mesh_cache, scale
+                    )
+                    blender_objects[bobj_name] = bobj_data
 
-                visual_name = visual_name.lower()
+                # Items
+                elif vob_type is VobType.oCItem:
+                    bobj_name, bobj_data = get_item_blender_obj_data(
+                        vob, vm, mesh_cache, visuals_cache, scale
+                    )
+                    blender_objects[bobj_name] = bobj_data
 
-                if visual_name in mesh_cache:
-                    mesh_data = mesh_cache[visual_name]
+                # Generic VOBs with standard visuals
                 else:
-                    mesh_data = parse_visual_data(visual_name, visuals_cache, scale)
-                    if not mesh_data:
-                        error(f"Failed to parse visual data for {visual_name}")
-                        continue
+                    bobj_name, bobj_data = get_generic_blender_obj_data(
+                        vob, mesh_cache, visuals_cache, scale
+                    )
+                    blender_objects[bobj_name] = bobj_data
 
-                    mesh_cache[visual_name] = mesh_data
+            except ParseMeshError as e:
+                error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
 
-                vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
+            # Traverse children
+            if vob.children:
+                stack.extend(vob.children)
 
-            else:
-                visual = obj.visual
-                visual_name = visual.name.lower()
-
-                if visual_name in mesh_cache:
-                    mesh_data = mesh_cache[visual_name]
-                else:
-                    mesh_data = parse_visual_data_from_obj(obj, visuals_cache, scale)
-                    if not mesh_data:
-                        error(f"Failed to parse visual data for {visual_name}")
-                        continue
-
-                    mesh_cache[visual_name] = mesh_data
-
-                vob_name = f"{trim_suffix(visual_name)}_{obj.id}"
-
-            vobs[vob_name] = VobData(
-                name=obj_name,
-                mesh=mesh_data,
-                position=get_vob_position(obj.position, scale),
-                rotation=get_vob_euler_rotation(obj.rotation),
-            )
-
-            children = obj.children
-            if len(children):
-                stack.extend(children)
+            count += 1
 
     except Exception as e:
         error("Failed to index VOBs")
         raise e
 
-    info(f"Indexed {len(vobs)} VOBs")
-    return vobs
+    info(f"Indexed {len(blender_objects)} VOBs")
+    return blender_objects
 
 
-def parse_waynet(world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01) -> Dict[str, VobData]:
+def parse_waynet(
+    world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
+) -> Dict[str, BlenderObjectData]:
     try:
         vobs = {}
         waynet = world.way_net
         waypoints = waynet.points
 
-        wp_mrm = visuals_cache["invisible_zcvobwaypoint.mrm"]()
-        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)  # type: ignore
+        wp_mrm = cast(
+            MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]()
+        )
+        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)
 
         for waypoint in waypoints:
             position = waypoint.position
@@ -168,10 +297,10 @@ def parse_waynet(world: World, visuals_cache: Dict[str, VisualLoader], scale: fl
             quat = target_direction.to_track_quat("Y", "Z")
             vob_rotation = quat.to_euler()
 
-            vob_position = get_vob_position(position, scale)
+            vob_position = get_blender_obj_position(position, scale)
             vob_name = waypoint.name.lower()
 
-            vobs[vob_name] = VobData(
+            vobs[vob_name] = BlenderObjectData(
                 name=vob_name,
                 mesh=wp_mesh,
                 position=vob_position,
@@ -201,7 +330,9 @@ def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
     return item_visual
 
 
-def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[str, str]) -> bpy.types.Object:
+def create_obj_from_mesh(
+    unique_name: str, mesh_data: MeshData, textures: Dict[str, str]
+) -> bpy.types.Object:
     try:
         mesh = bpy.data.meshes.new(unique_name)
         mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
@@ -226,6 +357,7 @@ def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[s
             polygon.material_index = mesh_data.material_indices[index]
 
         mesh.update()
+
         obj = bpy.data.objects.new(unique_name, mesh)
         bpy.context.collection.objects.link(obj)
     except Exception as e:
@@ -236,7 +368,7 @@ def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[s
 
 
 def create_obj_from_vob_data(
-    unique_name: str, vob_data: VobData, textures: Dict[str, str]
+    unique_name: str, vob_data: BlenderObjectData, textures: Dict[str, str]
 ) -> Optional[bpy.types.Object]:
     try:
         vob_mesh = vob_data.mesh
@@ -255,7 +387,9 @@ def create_obj_from_vob_data(
     return obj
 
 
-def create_instance_from_vob_data(unique_name: str, obj: bpy.types.Object, vob_data: VobData) -> bpy.types.Object:
+def create_instance_from_vob_data(
+    unique_name: str, obj: bpy.types.Object, vob_data: BlenderObjectData
+) -> bpy.types.Object:
     try:
         instance = bpy.data.objects.new(unique_name, obj.data)
         instance.location = vob_data.position or Vector((0, 0, 0))
@@ -269,7 +403,7 @@ def create_instance_from_vob_data(unique_name: str, obj: bpy.types.Object, vob_d
     return instance
 
 
-def create_vobs(vobs: Dict[str, VobData], textures: Dict[str, str]):
+def create_vobs(vobs: Dict[str, BlenderObjectData], textures: Dict[str, str]):
     try:
         success_count = 0
         mesh_cache = set()
