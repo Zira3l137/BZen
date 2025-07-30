@@ -18,6 +18,7 @@ from zenkit import (
     Vfs,
     VfsNode,
     VirtualObject,
+    VisualDecal,
     World,
 )
 
@@ -229,14 +230,8 @@ def parse_visual_data_from_obj(
 def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     try:
         bsp, mesh = wrld.bsp_tree, wrld.mesh
-        vertices, uvs, faces, normals, materials, material_indices = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        vertices, uvs, faces = [], [], []
+        normals, materials, material_indices = [], [], []
 
         for mat in mesh.materials:
             mat_color = mat.color
@@ -309,14 +304,8 @@ def parse_multi_resolution_mesh(
     mrm: MultiResolutionMesh, scale: float = 0.01
 ) -> MeshData:
     try:
-        vertices, uvs, faces, normals, materials, material_indices = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        vertices, uvs, faces = [], [], []
+        normals, materials, material_indices = [], [], []
 
         for mat in mrm.material:
             mat_color = mat.color
@@ -368,25 +357,18 @@ def parse_multi_resolution_mesh(
 
 def parse_decal(obj: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
     try:
-        obj_pos = obj.position
         visual_name = obj.visual.name.lower()
-        origin = Vector((obj_pos.x, obj_pos.z, obj_pos.y)) * scale
+        visual: VisualDecal = obj.visual  # type: ignore
         material = MaterialData(visual_name, (1.0, 1.0, 1.0, 1.0), visual_name)
+        dimension_x, dimension_y = (
+            visual.dimension.x * scale,
+            visual.dimension.y * scale,
+        )
 
-        bounding_box_min = obj.bbox.min
-        bounding_box_max = obj.bbox.max
-
-        min_bound = (
-            Vector((bounding_box_min.x, bounding_box_min.z, bounding_box_min.y)) * scale
-        ) - origin
-        max_bound = (
-            Vector((bounding_box_max.x, bounding_box_max.z, bounding_box_max.y)) * scale
-        ) - origin
-
-        v0 = min_bound  # Bottom-left
-        v1 = Vector((max_bound.x, max_bound.y, min_bound.z))  # Bottom-right
-        v2 = max_bound  # Top-right
-        v3 = Vector((min_bound.x, min_bound.y, max_bound.z))  # Top-left
+        v0 = Vector((-dimension_x, 0, -dimension_y))  # Bottom-left
+        v1 = Vector((dimension_x, 0, -dimension_y))  # Bottom-right
+        v2 = Vector((dimension_x, 0, dimension_y))  # Top-right
+        v3 = Vector((-dimension_x, 0, dimension_y))  # Top-left
 
         vertices = [v0, v1, v2, v3]
         vertices += [v0.copy(), v1.copy(), v2.copy(), v3.copy()]
@@ -441,14 +423,8 @@ def parse_mesh_attachments(
     try:
         nodes = mdh.nodes
         attachments = mdm.attachments
-        vertices, faces, normals, uvs, materials, material_indices = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        vertices, faces, normals = [], [], []
+        uvs, materials, material_indices = [], [], []
         vertex_offset, material_offset = 0, 0
         buffer = {}
 
