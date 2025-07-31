@@ -9,22 +9,11 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeAlias
 from material import MaterialData
 from mathutils import Matrix, Vector
 from utils import canonical_case_path, suffix, with_suffix
-from zenkit import (
-    Model,
-    ModelHierarchy,
-    ModelMesh,
-    MorphMesh,
-    MultiResolutionMesh,
-    Vfs,
-    VfsNode,
-    VirtualObject,
-    VisualDecal,
-    World,
-)
+from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
+                    MultiResolutionMesh, Vfs, VfsNode, VirtualObject,
+                    VisualDecal, World)
 
-VobVisual: TypeAlias = (
-    MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy
-)
+VobVisual: TypeAlias = MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy
 VisualLoader: TypeAlias = Callable[[], Optional[VobVisual]]
 
 
@@ -87,8 +76,7 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
         paths = [
-            canonical_case_path(game_directory / "_work" / "data" / path / "_compiled")
-            for path in ("meshes", "anims")
+            canonical_case_path(game_directory / "_work" / "data" / path / "_compiled") for path in ("meshes", "anims")
         ]
         stack = [entry for path in paths for entry in scandir(path)]
         while stack:
@@ -96,11 +84,9 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
             entry_ext = suffix(entry.name).lower()
             if not entry.is_dir():
                 if entry_ext in [ve.value for ve in VisualExtension]:
-                    visuals[entry.name.lower()] = (
-                        lambda path=entry.path, extension=VisualExtension(
-                            entry_ext
-                        ): load_visual(path, extension)
-                    )
+                    visuals[entry.name.lower()] = lambda path=entry.path, extension=VisualExtension(
+                        entry_ext
+                    ): load_visual(path, extension)
             else:
                 stack.extend([entry for entry in scandir(entry.path)])
 
@@ -131,10 +117,8 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
                 node = stack.pop()
                 extension = suffix(node.name).lower()
                 if extension in [ve.value for ve in VisualExtension]:
-                    visuals[node.name.lower()] = (
-                        lambda node=node, extension=VisualExtension(
-                            extension
-                        ): load_visual(node, extension)
+                    visuals[node.name.lower()] = lambda node=node, extension=VisualExtension(extension): load_visual(
+                        node, extension
                     )
                 if node.is_dir():
                     stack.extend(node.children)
@@ -146,9 +130,7 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
     info(f"Indexed from archives: {len(visuals)}")
 
 
-def load_visual(
-    path: str | Path | VfsNode, extension: VisualExtension
-) -> Optional[VobVisual]:
+def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> Optional[VobVisual]:
     try:
         match extension:
 
@@ -172,9 +154,7 @@ def load_visual(
         return None
 
 
-def parse_visual_data(
-    name: str, cache: Dict[str, VisualLoader], scale: float = 0.01
-) -> Optional[MeshData]:
+def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 0.01) -> Optional[MeshData]:
     try:
         extension = suffix(name).lower()
         if extension == "" or extension not in compiled:
@@ -256,11 +236,7 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
                 polygon.feature_indices,
             )
 
-            if (
-                polygon in polygon_cache
-                or polygon.is_portal
-                or polygon.is_ghost_occluder
-            ):
+            if polygon in polygon_cache or polygon.is_portal or polygon.is_ghost_occluder:
                 continue
 
             polygon_cache.add(polygon)
@@ -298,9 +274,7 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     return MeshData(vertices, faces, normals, uvs, materials, material_indices)
 
 
-def parse_multi_resolution_mesh(
-    mrm: MultiResolutionMesh, scale: float = 0.01
-) -> MeshData:
+def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -> MeshData:
     try:
         vertices, uvs, faces = [], [], []
         normals, materials, material_indices = [], [], []
@@ -315,9 +289,7 @@ def parse_multi_resolution_mesh(
             )
             materials.append(MaterialData(mat.name, color, mat.texture))
 
-        positions, vertex_cache = [
-            Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions
-        ], {}
+        positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
         for submesh_index, submesh in enumerate(mrm.submeshes):
             wedges = submesh.wedges
             triangles = submesh.triangles
@@ -327,9 +299,7 @@ def parse_multi_resolution_mesh(
                 face_indices = []
                 for i in range(3):
                     wedge = wedges[triangle_wedges[i]]
-                    normals.append(
-                        Vector((wedge.normal.x, wedge.normal.z, wedge.normal.y))
-                    )
+                    normals.append(Vector((wedge.normal.x, wedge.normal.z, wedge.normal.y)))
                     pos = positions[wedge.index] * scale
                     blender_pos = (float(pos.x), float(pos.z), float(pos.y))
 
@@ -464,16 +434,10 @@ def parse_mesh_attachments(
             buffer[index] = world_matrix
             world_matrix = world_matrix @ BASE_ROTATION_MATRIX @ BASE_SCALE_MATRIX
 
-            vertices_relative_to_parent = [
-                world_matrix @ vertex for vertex in mesh.vertices
-            ]
+            vertices_relative_to_parent = [world_matrix @ vertex for vertex in mesh.vertices]
 
-            faces.extend(
-                tuple(idx + vertex_offset for idx in face) for face in mesh.faces
-            )
-            material_indices.extend(
-                idx + material_offset for idx in mesh.material_indices
-            )
+            faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
+            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
             materials.extend(mesh.materials)
             vertices.extend(vertices_relative_to_parent)
             normals.extend(mesh.normals)
@@ -496,12 +460,8 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Mesh
     try:
         soft_skin_meshes = mdm.meshes
         root_translation = mdh.root_translation
-        root_translation = (
-            Vector((root_translation.x, root_translation.z, root_translation.y)) * scale
-        )
-        parsed_attachments, (vertex_offset, material_offset) = parse_mesh_attachments(
-            mdm, mdh, scale
-        )
+        root_translation = Vector((root_translation.x, root_translation.z, root_translation.y)) * scale
+        parsed_attachments, (vertex_offset, material_offset) = parse_mesh_attachments(mdm, mdh, scale)
         vertices, faces, normals, uvs, materials, material_indices = (
             parsed_attachments.vertices,
             parsed_attachments.faces,
@@ -514,15 +474,11 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Mesh
         for soft_skin_mesh in soft_skin_meshes:
             mesh = parse_multi_resolution_mesh(soft_skin_mesh.mesh, scale)
 
-            vertices_relative_to_root = [
-                vertex - root_translation for vertex in mesh.vertices
-            ]
+            vertices_relative_to_root = [vertex - root_translation for vertex in mesh.vertices]
             vertices.extend(vertices_relative_to_root)
 
             faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)  # type: ignore
-            material_indices.extend(
-                idx + material_offset for idx in mesh.material_indices
-            )
+            material_indices.extend(idx + material_offset for idx in mesh.material_indices)
             materials.extend(mesh.materials)
             vertices.extend(mesh.vertices)
             normals.extend(mesh.normals)

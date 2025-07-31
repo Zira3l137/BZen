@@ -39,9 +39,7 @@ def canonical_case_path(path: Path | str) -> Path:
         matches = [e for e in entries if e.name.lower() == part.lower()]
 
         if not matches:
-            raise FileNotFoundError(
-                f"No case-insensitive match for {part} in {current}"
-            )
+            raise FileNotFoundError(f"No case-insensitive match for {part} in {current}")
 
         current = Path(matches[0].path)
 

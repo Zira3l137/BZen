@@ -15,12 +15,8 @@ from log import logging_setup
 from material import index_textures
 from utils import blender_save_changes, canonical_case_path, suffix
 from visual import index_visuals, parse_world_mesh
-from vob import (
-    create_obj_from_mesh,
-    create_vobs,
-    parse_blender_obj_data_from_wrld,
-    parse_waynet,
-)
+from vob import (create_obj_from_mesh, create_vobs,
+                 parse_blender_obj_data_from_world, parse_waynet)
 from zenkit import DaedalusVm, Vfs, VfsNode, World
 
 
@@ -36,19 +32,11 @@ def parse_args() -> Dict[str, Any]:
 
     try:
         parser.add_argument("input", type=str, help="Input file name")
-        parser.add_argument(
-            "game-directory", type=Path, help="Path to the game directory"
-        )
+        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
         parser.add_argument("output", type=Path, help="Path to the output file")
-        parser.add_argument(
-            "scale", type=float, default=0.01, help="Scale factor (default: 0.01)"
-        )
-        parser.add_argument(
-            "-w", "--waynet", action="store_true", help="Parse waynet (default: False)"
-        )
-        parser.add_argument(
-            "verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)"
-        )
+        parser.add_argument("scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
+        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
+        parser.add_argument("verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
 
     except ArgumentError as e:
         raise e
@@ -59,8 +47,7 @@ def parse_args() -> Dict[str, Any]:
 def load_world_from_archive(name: str, game_directory: Path) -> World:
     matches: Dict[Path, VfsNode] = {}
     for path in (
-        canonical_case_path(game_directory / "data" / archive)
-        for archive in ["worlds.vdf", "worlds_addon.vdf"]
+        canonical_case_path(game_directory / "data" / archive) for archive in ["worlds.vdf", "worlds_addon.vdf"]
     ):
         if not path.exists():
             continue
@@ -81,16 +68,12 @@ def load_world_from_archive(name: str, game_directory: Path) -> World:
         info(f"Loading from archive: {archive_names[-1]}")
         return World.load(nodes[-1])
     else:
-        raise Exception(
-            'Could not find world in "data/worlds.vdf" or "data/worlds_addon.vdf"'
-        )
+        raise Exception('Could not find world in "data/worlds.vdf" or "data/worlds_addon.vdf"')
 
 
 def load_world_from_disk(name: str, game_directory: Path) -> World:
     info("Loading world from disk")
-    for path in canonical_case_path(game_directory / "_work" / "data" / "worlds").glob(
-        "**/*.zen"
-    ):
+    for path in canonical_case_path(game_directory / "_work" / "data" / "worlds").glob("**/*.zen"):
         if path.name.lower() == name.lower():
             return World.load(path)
     else:
@@ -126,9 +109,7 @@ def main():
         scale: float = args["scale"]
         should_parse_waynet: bool = args["waynet"]
 
-        logging_setup(
-            args["verbosity"], output_path.with_name(f"{output_path.stem}.log")
-        )
+        logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
 
         info(f"Loading world")
         world = load_world(input_file_name, game_directory)
@@ -139,14 +120,7 @@ def main():
 
         info("Loading Daedalus virtual machine")
         vm = DaedalusVm.load(
-            canonical_case_path(
-                game_directory
-                / "_work"
-                / "data"
-                / "scripts"
-                / "_compiled"
-                / "gothic.dat"
-            )
+            canonical_case_path(game_directory / "_work" / "data" / "scripts" / "_compiled" / "gothic.dat")
         )
 
         info("Indexing textures")
@@ -158,7 +132,7 @@ def main():
         visuals = index_visuals(game_directory)
 
         info("Indexing VOBs")
-        vobs = parse_blender_obj_data_from_wrld(world, vm, visuals, scale)
+        vobs = parse_blender_obj_data_from_world(world, vm, visuals, scale)
 
         if should_parse_waynet:
             info("Parsing waynet")

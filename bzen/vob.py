@@ -7,26 +7,12 @@ import bpy
 from material import create_material
 from mathutils import Euler, Matrix, Vector
 from utils import trim_suffix
-from visual import (
-    MeshData,
-    VisualLoader,
-    parse_decal,
-    parse_multi_resolution_mesh,
-    parse_visual_data,
-    parse_visual_data_from_vob,
-)
-from zenkit import (
-    DaedalusInstanceType,
-    DaedalusVm,
-    ItemInstance,
-    Mat3x3,
-    MultiResolutionMesh,
-    Vec3f,
-    VirtualObject,
-    VisualType,
-    VobType,
-    World,
-)
+from visual import (MeshData, VisualLoader, parse_decal,
+                    parse_multi_resolution_mesh, parse_visual_data,
+                    parse_visual_data_from_vob)
+from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
+                    MultiResolutionMesh, Vec3f, VirtualObject, VisualType,
+                    VobType, World)
 
 invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
@@ -94,11 +80,7 @@ def get_special_blender_obj_data(
         raise ValueError(f"Unknown invisible vob type: {vob_type}")
 
     vob_visual_name = invisible_vob[vob_type]
-    blender_obj_name = (
-        f"invisible:{vob_name}_{vob.id}"
-        if vob_name
-        else f"invisible:{vob_type.name}_{vob.id}"
-    )
+    blender_obj_name = f"invisible:{vob_name}_{vob.id}" if vob_name else f"invisible:{vob_type.name}_{vob.id}"
     mesh_data = None
 
     if vob_visual_name in mesh_cache:
@@ -130,9 +112,7 @@ def get_decal_blender_obj_data(
     else:
         mesh_data = parse_decal(vob, scale)
         if not mesh_data:
-            raise ParseMeshError(
-                f'Could not retrieve mesh data for "{blender_obj_name}"'
-            )
+            raise ParseMeshError(f'Could not retrieve mesh data for "{blender_obj_name}"')
         mesh_cache[vob_visual_name] = mesh_data
 
     return blender_obj_name, BlenderObjectData(
@@ -164,9 +144,7 @@ def get_item_blender_obj_data(
     else:
         mesh_data = parse_visual_data(item_visual_name, visuals_cache, scale)
         if not mesh_data:
-            raise ParseMeshError(
-                f'Could not retrieve mesh data for "{blender_obj_name}"'
-            )
+            raise ParseMeshError(f'Could not retrieve mesh data for "{blender_obj_name}"')
         mesh_cache[vob_visual_name] = mesh_data
 
     return blender_obj_name, BlenderObjectData(
@@ -192,9 +170,7 @@ def get_generic_blender_obj_data(
     else:
         mesh_data = parse_visual_data_from_vob(vob, visuals_cache, scale)
         if not mesh_data:
-            raise ParseMeshError(
-                f'Could not retrieve mesh data for "{blender_obj_name}"'
-            )
+            raise ParseMeshError(f'Could not retrieve mesh data for "{blender_obj_name}"')
         mesh_cache[vob_visual_name] = mesh_data
 
     return blender_obj_name, BlenderObjectData(
@@ -205,7 +181,7 @@ def get_generic_blender_obj_data(
     )
 
 
-def parse_blender_obj_data_from_wrld(
+def parse_blender_obj_data_from_world(
     world: World,
     vm: DaedalusVm,
     visuals_cache: Dict[str, VisualLoader],
@@ -224,39 +200,28 @@ def parse_blender_obj_data_from_wrld(
 
             try:
                 # Skip level mesh
-                if (
-                    vob_type is VobType.zCVobLevelCompo
-                    or vob_visual_type is VisualType.PARTICLE_EFFECT
-                ):
+                if vob_type is VobType.zCVobLevelCompo or vob_visual_type is VisualType.PARTICLE_EFFECT:
                     stack.extend(vob.children)
                     continue
 
                 # Invisible VOBs
                 if vob_type in invisible_vob:
-                    bobj_name, bobj_data = get_special_blender_obj_data(
-                        vob, mesh_cache, visuals_cache, scale
-                    )
+                    bobj_name, bobj_data = get_special_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
                     blender_objects[bobj_name] = bobj_data
 
                 # Decals
                 elif vob_visual_type is VisualType.DECAL:
-                    bobj_name, bobj_data = get_decal_blender_obj_data(
-                        vob, mesh_cache, scale
-                    )
+                    bobj_name, bobj_data = get_decal_blender_obj_data(vob, mesh_cache, scale)
                     blender_objects[bobj_name] = bobj_data
 
                 # Items
                 elif vob_type is VobType.oCItem:
-                    bobj_name, bobj_data = get_item_blender_obj_data(
-                        vob, vm, mesh_cache, visuals_cache, scale
-                    )
+                    bobj_name, bobj_data = get_item_blender_obj_data(vob, vm, mesh_cache, visuals_cache, scale)
                     blender_objects[bobj_name] = bobj_data
 
                 # Generic VOBs with standard visuals
                 else:
-                    bobj_name, bobj_data = get_generic_blender_obj_data(
-                        vob, mesh_cache, visuals_cache, scale
-                    )
+                    bobj_name, bobj_data = get_generic_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
                     blender_objects[bobj_name] = bobj_data
 
             except ParseMeshError as e:
@@ -284,9 +249,7 @@ def parse_waynet(
         waynet = world.way_net
         waypoints = waynet.points
 
-        wp_mrm = cast(
-            MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]()
-        )
+        wp_mrm = cast(MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]())
         wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)
 
         for waypoint in waypoints:
@@ -330,9 +293,7 @@ def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
     return item_visual
 
 
-def create_obj_from_mesh(
-    unique_name: str, mesh_data: MeshData, textures: Dict[str, str]
-) -> bpy.types.Object:
+def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[str, str]) -> bpy.types.Object:
     try:
         mesh = bpy.data.meshes.new(unique_name)
         mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore

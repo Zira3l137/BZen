@@ -20,9 +20,7 @@ class MaterialData:
 def index_textures(game_directory: Path) -> Dict[str, str]:
     try:
         textures = {}
-        stack = [
-            entry for entry in scandir(game_directory / "_work" / "data" / "textures")
-        ]
+        stack = [entry for entry in scandir(game_directory / "_work" / "data" / "textures")]
 
         while stack:
             entry = stack.pop()
@@ -40,9 +38,7 @@ def index_textures(game_directory: Path) -> Dict[str, str]:
     return textures
 
 
-def create_material(
-    material: MaterialData, textures: Dict[str, str]
-) -> bpy.types.Material:
+def create_material(material: MaterialData, textures: Dict[str, str]) -> bpy.types.Material:
     try:
         if existing_material := bpy.data.materials.get(material.name):
             return existing_material
@@ -79,11 +75,7 @@ def create_material(
         elif texture in textures.values():
             tex_path = textures["default.tga"]
 
-        image = (
-            bpy.data.images.get(tex_path) or bpy.data.images.load(tex_path)
-            if tex_path
-            else None
-        )
+        image = bpy.data.images.get(tex_path) or bpy.data.images.load(tex_path) if tex_path else None
         texture_node.image = image  # type: ignore
 
         bmat.diffuse_color = material.color

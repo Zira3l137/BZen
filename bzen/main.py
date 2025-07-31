@@ -21,12 +21,8 @@ def parse_args() -> Dict[str, Any]:
     parser = ArgumentParser()
     try:
         parser.add_argument("input", type=str, help="Input file name")
-        parser.add_argument(
-            "blender-exe", type=Path, help="Path to the blender executable"
-        )
-        parser.add_argument(
-            "game-directory", type=Path, help="Path to the game directory"
-        )
+        parser.add_argument("blender-exe", type=Path, help="Path to the blender executable")
+        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
         parser.add_argument(
             "-o",
             "--output",
@@ -40,9 +36,7 @@ def parse_args() -> Dict[str, Any]:
             default=0.01,
             help="Scale factor (default: 0.01)",
         )
-        parser.add_argument(
-            "-w", "--waynet", action="store_true", help="Parse waynet (default: False)"
-        )
+        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
         parser.add_argument(
             "-v",
             "--verbosity",
