@@ -125,16 +125,15 @@ def get_item_blender_obj_data(
         raise Exception(f"Item {vob.name} has no visual")
 
     blender_obj_name = f"{trim_suffix(item_visual_name).lower()}_{vob.id}"
-    vob_visual_name = vob.visual.name
     mesh_data = None
 
-    if vob_visual_name in mesh_cache:
-        mesh_data = mesh_cache[vob_visual_name]
+    if item_visual_name in mesh_cache:
+        mesh_data = mesh_cache[item_visual_name]
     else:
         mesh_data = parse_visual_data(item_visual_name, visuals_cache, scale)
         if not mesh_data:
             raise ParseMeshError(f'Could not retrieve mesh data for "{blender_obj_name}"')
-        mesh_cache[vob_visual_name] = mesh_data
+        mesh_cache[item_visual_name] = mesh_data
 
     return blender_obj_name, BlenderObjectData(
         name=vob.name.lower(),
