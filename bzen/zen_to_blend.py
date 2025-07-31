@@ -13,10 +13,10 @@ from logging import error, info
 
 from log import logging_setup
 from material import index_textures
+from scene import create_obj_from_mesh, create_vobs
 from utils import blender_save_changes, canonical_case_path, suffix
 from visual import index_visuals, parse_world_mesh
-from vob import (create_obj_from_mesh, create_vobs,
-                 parse_blender_obj_data_from_world, parse_waynet)
+from vob import parse_blender_obj_data_from_world, parse_waynet
 from zenkit import DaedalusVm, Vfs, VfsNode, World
 
 

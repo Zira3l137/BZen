@@ -1,11 +1,9 @@
 import math
-from dataclasses import dataclass, field
-from logging import error, info, warning
+from logging import error, info
 from typing import Dict, Optional, Tuple, cast
 
-import bpy
-from material import create_material
 from mathutils import Euler, Matrix, Vector
+from scene import BlenderObjectData
 from utils import trim_suffix
 from visual import (MeshData, VisualLoader, parse_decal,
                     parse_multi_resolution_mesh, parse_visual_data,
@@ -38,14 +36,6 @@ invisible_vob = {
 class ParseMeshError(Exception):
     def __init__(self, message: str):
         super().__init__(message)
-
-
-@dataclass(frozen=True, slots=True)
-class BlenderObjectData:
-    name: str = field(default_factory=str)
-    mesh: Optional[MeshData] = None
-    position: Vector = field(default_factory=Vector)
-    rotation: Euler = field(default_factory=Euler)
 
 
 def get_blender_obj_euler_rotation(matrix: Mat3x3) -> Euler:
@@ -133,7 +123,6 @@ def get_item_blender_obj_data(
     item_visual_name = parse_item_visual_name(vob, vm)
     if not item_visual_name:
         raise Exception(f"Item {vob.name} has no visual")
-    item_visual_name = item_visual_name.lower()
 
     blender_obj_name = f"{trim_suffix(item_visual_name).lower()}_{vob.id}"
     vob_visual_name = vob.visual.name
@@ -291,106 +280,3 @@ def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
         raise e
 
     return item_visual
-
-
-def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[str, str]) -> bpy.types.Object:
-    try:
-        mesh = bpy.data.meshes.new(unique_name)
-        mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
-        mesh.normals_split_custom_set(mesh_data.normals)  # type: ignore
-
-        if mesh_data.uvs:
-            uv_layer = mesh.uv_layers.new(name="UVMap")
-            for i in range(len(uv_layer.data)):
-                uv_layer.data[i].uv = mesh_data.uvs[i]
-
-        for material in mesh_data.materials:
-            mat = bpy.data.materials.get(material.name)
-            if not mat:
-                mat = create_material(material, textures)
-            mesh.materials.append(mat)
-
-        for index, polygon in enumerate(mesh.polygons):
-            if not len(mesh_data.materials):
-                warning("Mesh has no materials")
-                continue
-
-            polygon.material_index = mesh_data.material_indices[index]
-
-        mesh.update()
-
-        obj = bpy.data.objects.new(unique_name, mesh)
-        bpy.context.collection.objects.link(obj)
-    except Exception as e:
-        error("Failed to create object from mesh")
-        raise e
-
-    return obj
-
-
-def create_obj_from_vob_data(
-    unique_name: str, vob_data: BlenderObjectData, textures: Dict[str, str]
-) -> Optional[bpy.types.Object]:
-    try:
-        vob_mesh = vob_data.mesh
-
-        if not vob_mesh:
-            error(f"VOB {unique_name} has no mesh, skipping")
-            return None
-
-        obj = create_obj_from_mesh(unique_name, vob_mesh, textures)
-        obj.location = vob_data.position or Vector((0, 0, 0))
-        obj.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
-    except Exception as e:
-        error(f"Failed to create object {unique_name}")
-        raise e
-
-    return obj
-
-
-def create_instance_from_vob_data(
-    unique_name: str, obj: bpy.types.Object, vob_data: BlenderObjectData
-) -> bpy.types.Object:
-    try:
-        instance = bpy.data.objects.new(unique_name, obj.data)
-        instance.location = vob_data.position or Vector((0, 0, 0))
-        instance.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
-
-        bpy.context.collection.objects.link(instance)
-    except Exception as e:
-        error(f"Failed to create instance {unique_name}")
-        raise e
-
-    return instance
-
-
-def create_vobs(vobs: Dict[str, BlenderObjectData], textures: Dict[str, str]):
-    try:
-        success_count = 0
-        mesh_cache = set()
-        obj_cache = {}
-
-        for vob_name, vob_data in vobs.items():
-            mesh_hash = hash(vob_data.mesh)
-            result = None
-
-            if mesh_hash in mesh_cache:
-                existing_obj = obj_cache[mesh_hash]
-                result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
-            else:
-                result = create_obj_from_vob_data(vob_name, vob_data, textures)
-                if not result:
-                    warning(f"VOB {vob_name} has no mesh, skipping")
-                    continue
-
-                mesh_cache.add(mesh_hash)
-                obj_cache[mesh_hash] = result
-
-            success_count += 1
-
-    except Exception as e:
-        error("Failed to create VOBs")
-        raise e
-
-    bpy.context.view_layer.update()
-    info(f"Created {success_count} VOBs")
