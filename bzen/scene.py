@@ -3,9 +3,9 @@ from logging import error, info, warning
 from typing import Dict, Optional
 
 import bpy
-from material import MaterialData
 from mathutils import Euler, Vector
-from visual import MeshData
+from visual import MaterialData, MeshData, VisualLoader
+from zenkit import Texture
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +16,28 @@ class BlenderObjectData:
     rotation: Euler = field(default_factory=Euler)
 
 
-def create_material(material: MaterialData, textures: Dict[str, str]) -> bpy.types.Material:
+def flip_image_vertically(data: list[float], width: int, height: int) -> list[float]:
+    flipped = []
+    row_len = width * 4
+    for y in reversed(range(height)):
+        start = y * row_len
+        end = start + row_len
+        flipped.extend(data[start:end])
+    return flipped
+
+
+def create_texture(name: str, texture: Texture) -> bpy.types.Image:
+    img_bytes = texture.mipmap_rgba(0)
+    blender_img_data = flip_image_vertically([b / 255.0 for b in img_bytes], texture.width, texture.height)
+
+    img = bpy.data.images.new(name, width=texture.width, height=texture.height, alpha=True)
+    img.pixels[:] = blender_img_data  # type: ignore
+    img.pack()
+
+    return img
+
+
+def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoader]) -> bpy.types.Material:
     try:
         if existing_material := bpy.data.materials.get(material.name):
             return existing_material
@@ -45,15 +66,13 @@ def create_material(material: MaterialData, textures: Dict[str, str]) -> bpy.typ
         texture_node = nodes.new(type="ShaderNodeTexImage")
         texture_node.location = (-400, 0)
 
-        texture = material.texture.lower()
+        texture_name = material.texture.lower()
 
-        tex_path = None
-        if texture in textures:
-            tex_path = textures[texture]
-        elif texture in textures.values():
-            tex_path = textures["default.tga"]
+        texture_obj = None
+        if texture_name in visuals_cache:
+            texture_obj = visuals_cache[texture_name]()
 
-        image = bpy.data.images.get(tex_path) or bpy.data.images.load(tex_path) if tex_path else None
+        image = (bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj)) if texture_obj else None  # type: ignore
         texture_node.image = image  # type: ignore
 
         bmat.diffuse_color = material.color
@@ -77,7 +96,9 @@ def create_material(material: MaterialData, textures: Dict[str, str]) -> bpy.typ
     return bmat
 
 
-def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[str, str]) -> bpy.types.Object:
+def create_obj_from_mesh(
+    unique_name: str, mesh_data: MeshData, visuals_cache: Dict[str, VisualLoader]
+) -> bpy.types.Object:
     try:
         mesh = bpy.data.meshes.new(unique_name)
         mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
@@ -91,7 +112,7 @@ def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[s
         for material in mesh_data.materials:
             mat = bpy.data.materials.get(material.name)
             if not mat:
-                mat = create_material(material, textures)
+                mat = create_material(material, visuals_cache)
             mesh.materials.append(mat)
 
         for index, polygon in enumerate(mesh.polygons):
@@ -113,7 +134,7 @@ def create_obj_from_mesh(unique_name: str, mesh_data: MeshData, textures: Dict[s
 
 
 def create_obj_from_vob_data(
-    unique_name: str, vob_data: BlenderObjectData, textures: Dict[str, str]
+    unique_name: str, vob_data: BlenderObjectData, visuals_cache: Dict[str, VisualLoader]
 ) -> Optional[bpy.types.Object]:
     try:
         vob_mesh = vob_data.mesh
@@ -122,7 +143,7 @@ def create_obj_from_vob_data(
             error(f"VOB {unique_name} has no mesh, skipping")
             return None
 
-        obj = create_obj_from_mesh(unique_name, vob_mesh, textures)
+        obj = create_obj_from_mesh(unique_name, vob_mesh, visuals_cache)
         obj.location = vob_data.position or Vector((0, 0, 0))
         obj.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
     except Exception as e:
@@ -148,7 +169,7 @@ def create_instance_from_vob_data(
     return instance
 
 
-def create_vobs(vobs: Dict[str, BlenderObjectData], textures: Dict[str, str]):
+def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, VisualLoader]):
     try:
         success_count = 0
         mesh_cache = set()
@@ -162,7 +183,7 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], textures: Dict[str, str]):
                 existing_obj = obj_cache[mesh_hash]
                 result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
             else:
-                result = create_obj_from_vob_data(vob_name, vob_data, textures)
+                result = create_obj_from_vob_data(vob_name, vob_data, visuals_cache)
                 if not result:
                     warning(f"VOB {vob_name} has no mesh, skipping")
                     continue

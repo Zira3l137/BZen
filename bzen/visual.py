@@ -6,14 +6,13 @@ from os import scandir
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, TypeAlias
 
-from material import MaterialData
 from mathutils import Matrix, Vector
-from utils import canonical_case_path, suffix, with_suffix
+from utils import canonical_case_path, suffix, trim_suffix, with_suffix
 from zenkit import (Model, ModelHierarchy, ModelMesh, MorphMesh,
-                    MultiResolutionMesh, Vfs, VfsNode, VirtualObject,
+                    MultiResolutionMesh, Texture, Vfs, VfsNode, VirtualObject,
                     VisualDecal, World)
 
-VobVisual: TypeAlias = MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy
+VobVisual: TypeAlias = MultiResolutionMesh | ModelMesh | Model | MorphMesh | ModelHierarchy | Texture
 VisualLoader: TypeAlias = Callable[[], Optional[VobVisual]]
 
 
@@ -23,6 +22,7 @@ class VisualExtension(StrEnum):
     MDM = "mdm"
     MMB = "mmb"
     MDH = "mdh"
+    TEX = "tex"
 
 
 compiled = {
@@ -30,10 +30,28 @@ compiled = {
     "asc": VisualExtension.MDL,
     "mds": VisualExtension.MDM,
     "mms": VisualExtension.MMB,
+    "tga": VisualExtension.TEX,
 }
 
 BASE_SCALE_MATRIX = Matrix().Scale(-1, 4, Vector((0, 1, 0)))
 BASE_ROTATION_MATRIX = Matrix().Rotation(math.radians(-90), 4, Vector((1, 0, 0)))
+
+VISUAL_CATEGORIES = ["anims", "textures", "meshes"]
+VISUAL_ARCHIVES = [
+    f"{category}.vdf" if not addon else f"{category}_addon.vdf"
+    for category in VISUAL_CATEGORIES
+    for addon in (False, True)
+]
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialData:
+    name: str
+    color: Tuple[float, float, float, float]
+    texture: Optional[str] = field(default=None)
+
+    def __hash__(self):
+        return hash(self.name) + hash(self.color) + hash(self.texture)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +94,8 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
         paths = [
-            canonical_case_path(game_directory / "_work" / "data" / path / "_compiled") for path in ("meshes", "anims")
+            canonical_case_path(game_directory / "_work" / "data" / category / "_compiled")
+            for category in VISUAL_CATEGORIES
         ]
         stack = [entry for path in paths for entry in scandir(path)]
         while stack:
@@ -84,9 +103,13 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
             entry_ext = suffix(entry.name).lower()
             if not entry.is_dir():
                 if entry_ext in [ve.value for ve in VisualExtension]:
-                    visuals[entry.name.lower()] = lambda path=entry.path, extension=VisualExtension(
-                        entry_ext
-                    ): load_visual(path, extension)
+                    extension = VisualExtension(entry_ext)
+                    name = entry.name.lower()
+                    if extension is VisualExtension.TEX:
+                        name = with_suffix(name.replace("-c.", "."), "tga", True)
+                    visuals[name] = lambda path=entry.path, extension=VisualExtension(entry_ext): load_visual(
+                        path, extension
+                    )
             else:
                 stack.extend([entry for entry in scandir(entry.path)])
 
@@ -99,15 +122,7 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
 
 def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualLoader]):
     try:
-        paths = [
-            canonical_case_path(game_directory / "data" / path)
-            for path in (
-                "meshes.vdf",
-                "meshes_addon.vdf",
-                "anims.vdf",
-                "anims_addon.vdf",
-            )
-        ]
+        paths = [canonical_case_path(game_directory / "data" / path) for path in VISUAL_ARCHIVES]
 
         for path in paths:
             vfs = Vfs()
@@ -117,9 +132,10 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
                 node = stack.pop()
                 extension = suffix(node.name).lower()
                 if extension in [ve.value for ve in VisualExtension]:
-                    visuals[node.name.lower()] = lambda node=node, extension=VisualExtension(extension): load_visual(
-                        node, extension
-                    )
+                    name = node.name.lower()
+                    if extension == "tex":
+                        name = with_suffix(name.replace("-c.", "."), "tga", True)
+                    visuals[name] = lambda node=node, extension=VisualExtension(extension): load_visual(node, extension)
                 if node.is_dir():
                     stack.extend(node.children)
 
@@ -149,6 +165,9 @@ def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> Optio
             case VisualExtension.MDH:
                 return ModelHierarchy.load(path)
 
+            case VisualExtension.TEX:
+                return Texture.load(path)
+
     except:
         error("Failed to load visual")
         return None
@@ -171,7 +190,7 @@ def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 
             case "mds":
                 mdm = cache[compiled_name]()
                 mdh = cache[with_suffix(name, "mdh", True).lower()]()
-                return parse_mesh(mdm, mdh, scale)  # type: ignore
+                return parse_model_mesh(mdm, mdh, scale)  # type: ignore
 
             case "asc":
                 mdl = cache[compiled_name]()
@@ -187,19 +206,19 @@ def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 
 
 
 def parse_visual_data_from_vob(
-    obj: VirtualObject, cache: Dict[str, VisualLoader], scale: float = 0.01
+    vob: VirtualObject, cache: Dict[str, VisualLoader], scale: float = 0.01
 ) -> Optional[MeshData]:
     try:
-        if obj.visual is None:
+        if vob.visual is None:
             return None
 
-        name = obj.visual.name.lower()
+        name = vob.visual.name.lower()
         mesh_data = parse_visual_data(name, cache, scale)
         if not mesh_data:
             return None
 
     except Exception as e:
-        error(f"Failed to parse visual data for {obj.name}: {e}")
+        error(f"Failed to parse visual data for {vob.name}: {e}")
         raise e
 
     return mesh_data
@@ -323,11 +342,11 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
     return MeshData(vertices, faces, normals, uvs, materials, material_indices)
 
 
-def parse_decal(obj: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
+def parse_decal_mesh(vob: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
     try:
-        visual_name = obj.visual.name.lower()
-        visual: VisualDecal = obj.visual  # type: ignore
-        material = MaterialData(visual_name, (1.0, 1.0, 1.0, 1.0), visual_name)
+        visual_name = vob.visual.name.lower()
+        visual: VisualDecal = vob.visual  # type: ignore
+        material = MaterialData(trim_suffix(visual_name), (1.0, 1.0, 1.0, 1.0), visual_name)
         dimension_x, dimension_y = (
             visual.dimension.x * scale,
             visual.dimension.y * scale,
@@ -372,7 +391,7 @@ def parse_decal(obj: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
         material_indices = [0, 0, 0, 0]
 
     except Exception as e:
-        error(f"Failed to parse decal data for {obj.name}: {e}")
+        error(f"Failed to parse decal data for {vob.name}: {e}")
         return None
 
     return MeshData(
@@ -456,7 +475,7 @@ def parse_mesh_attachments(
     )
 
 
-def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> MeshData:
+def parse_model_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> MeshData:
     try:
         soft_skin_meshes = mdm.meshes
         root_translation = mdh.root_translation
@@ -494,19 +513,19 @@ def parse_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> Mesh
     return MeshData(vertices, faces, normals, uvs, materials, material_indices)
 
 
-def parse_model(mdl: Model, scale: float = 0.01) -> MeshData:
-    try:
-        return parse_mesh(mdl.mesh, mdl.hierarchy, scale)
-
-    except Exception as e:
-        error("Failed to parse model")
-        raise e
-
-
 def parse_morph_mesh(mmb: MorphMesh, scale: float = 0.01) -> MeshData:
     try:
         return parse_multi_resolution_mesh(mmb.mesh, scale)
 
     except Exception as e:
         error("Failed to parse morph mesh")
+        raise e
+
+
+def parse_model(mdl: Model, scale: float = 0.01) -> MeshData:
+    try:
+        return parse_model_mesh(mdl.mesh, mdl.hierarchy, scale)
+
+    except Exception as e:
+        error("Failed to parse model")
         raise e

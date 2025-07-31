@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple, cast
 from mathutils import Euler, Matrix, Vector
 from scene import BlenderObjectData
 from utils import trim_suffix
-from visual import (MeshData, VisualLoader, parse_decal,
+from visual import (MeshData, VisualLoader, parse_decal_mesh,
                     parse_multi_resolution_mesh, parse_visual_data,
                     parse_visual_data_from_vob)
 from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
@@ -100,7 +100,7 @@ def get_decal_blender_obj_data(
     if vob_visual_name in mesh_cache:
         mesh_data = mesh_cache[vob_visual_name]
     else:
-        mesh_data = parse_decal(vob, scale)
+        mesh_data = parse_decal_mesh(vob, scale)
         if not mesh_data:
             raise ParseMeshError(f'Could not retrieve mesh data for "{blender_obj_name}"')
         mesh_cache[vob_visual_name] = mesh_data

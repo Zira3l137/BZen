@@ -12,7 +12,6 @@ if str(script_dir) not in sys.path:
 from logging import error, info
 
 from log import logging_setup
-from material import index_textures
 from scene import create_obj_from_mesh, create_vobs
 from utils import blender_save_changes, canonical_case_path, suffix
 from visual import index_visuals, parse_world_mesh
@@ -86,7 +85,10 @@ def load_world(input: str, game_directory: Path) -> World:
 
     if not ":" in input.lower():
         if len(Path(input).parts) == 1:
-            return load_world_from_archive(str(input), game_directory)
+            try:
+                return load_world_from_archive(str(input), game_directory)
+            except Exception:
+                return load_world_from_disk(str(input), game_directory)
         return World.load(input)
 
     prefix, name = input.split(":", 1)
@@ -123,11 +125,6 @@ def main():
             canonical_case_path(game_directory / "_work" / "data" / "scripts" / "_compiled" / "gothic.dat")
         )
 
-        info("Indexing textures")
-        textures = index_textures(game_directory)
-        if len(textures) == 0:
-            error("Attention! No textures were found during parsing!")
-
         info("Indexing visuals")
         visuals = index_visuals(game_directory)
 
@@ -149,10 +146,10 @@ def main():
             error("Attention! World mesh is empty!")
 
         info("Creating world")
-        create_obj_from_mesh("LEVEL", wrld_mesh_data, textures)
+        create_obj_from_mesh("LEVEL", wrld_mesh_data, visuals)
 
         info("Creating VOBs")
-        create_vobs(vobs, textures)
+        create_vobs(vobs, visuals)
 
         info(f"Saving to {output_path}...")
         blender_save_changes(filepath=str(output_path))
