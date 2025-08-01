@@ -1,6 +1,6 @@
 [project]
 name = "bzen"
-version = "0.1.0"
+version = "0.2.0"
 description = "BZen is a powerful command-line tool for converting 3D world files (ZENs) from the Gothic and Gothic II games into Blender projects."
 authors = [{ name = "Zira3l137" }]
 readme = "README.md"
