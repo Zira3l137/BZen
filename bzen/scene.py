@@ -3,7 +3,7 @@ from logging import error, info, warning
 from typing import Dict, Optional
 
 import bpy
-from mathutils import Euler, Vector
+from mathutils import Quaternion, Vector
 from visual import MaterialData, MeshData, VisualLoader
 from zenkit import Texture
 
@@ -13,7 +13,7 @@ class BlenderObjectData:
     name: str = field(default_factory=str)
     mesh: Optional[MeshData] = None
     position: Vector = field(default_factory=Vector)
-    rotation: Euler = field(default_factory=Euler)
+    rotation: Quaternion = field(default_factory=Quaternion)
 
 
 def flip_image_vertically(data: list[float], width: int, height: int) -> list[float]:
@@ -125,6 +125,7 @@ def create_obj_from_mesh(
         mesh.update()
 
         obj = bpy.data.objects.new(unique_name, mesh)
+        obj.rotation_mode = "QUATERNION"
         bpy.context.collection.objects.link(obj)
     except Exception as e:
         error("Failed to create object from mesh")
@@ -145,7 +146,7 @@ def create_obj_from_vob_data(
 
         obj = create_obj_from_mesh(unique_name, vob_mesh, visuals_cache)
         obj.location = vob_data.position or Vector((0, 0, 0))
-        obj.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
+        obj.rotation_quaternion = vob_data.rotation or Quaternion()
     except Exception as e:
         error(f"Failed to create object {unique_name}")
         raise e
@@ -158,8 +159,9 @@ def create_instance_from_vob_data(
 ) -> bpy.types.Object:
     try:
         instance = bpy.data.objects.new(unique_name, obj.data)
+        instance.rotation_mode = "QUATERNION"
         instance.location = vob_data.position or Vector((0, 0, 0))
-        instance.rotation_euler = vob_data.rotation or Euler((0, 0, 0))
+        instance.rotation_quaternion = vob_data.rotation or Quaternion()
 
         bpy.context.collection.objects.link(instance)
     except Exception as e:

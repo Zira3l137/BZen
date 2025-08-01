@@ -1,8 +1,7 @@
-import math
 from logging import error, info
 from typing import Dict, Optional, Tuple, cast
 
-from mathutils import Euler, Matrix, Vector
+from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
 from utils import trim_suffix
 from visual import (MeshData, VisualLoader, parse_decal_mesh,
@@ -38,18 +37,10 @@ class ParseMeshError(Exception):
         super().__init__(message)
 
 
-def get_blender_obj_euler_rotation(matrix: Mat3x3) -> Euler:
-    columns = matrix.columns
-    c0, c1, c2 = columns[0], columns[1], columns[2]
-
-    a = (c0.x, c1.x, c2.x)
-    b = (c0.z, c1.z, c2.z)
-    c = (c0.y, c1.y, c2.y)
-
-    euler = Matrix((a, b, c)).to_euler()
-    euler.x = -euler.x + math.radians(90)
-
-    return euler
+def get_blender_obj_quaternion_rotation(matrix: Mat3x3) -> Quaternion:
+    quat = matrix.to_quaternion()
+    quat = Quaternion((quat.w, quat.x, quat.z, quat.y))
+    return quat
 
 
 def get_blender_obj_position(vector: Vec3f, scale: float = 0.01) -> Vector:
@@ -86,7 +77,7 @@ def get_special_blender_obj_data(
         name=vob_name,
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
-        rotation=get_blender_obj_euler_rotation(vob.rotation),
+        rotation=get_blender_obj_quaternion_rotation(vob.rotation),
     )
 
 
@@ -109,7 +100,7 @@ def get_decal_blender_obj_data(
         name=vob.name.lower(),
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
-        rotation=get_blender_obj_euler_rotation(vob.rotation),
+        rotation=get_blender_obj_quaternion_rotation(vob.rotation),
     )
 
 
@@ -139,7 +130,7 @@ def get_item_blender_obj_data(
         name=vob.name.lower(),
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
-        rotation=get_blender_obj_euler_rotation(vob.rotation),
+        rotation=get_blender_obj_quaternion_rotation(vob.rotation),
     )
 
 
@@ -165,7 +156,7 @@ def get_generic_blender_obj_data(
         name=vob.name.lower(),
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
-        rotation=get_blender_obj_euler_rotation(vob.rotation),
+        rotation=get_blender_obj_quaternion_rotation(vob.rotation),
     )
 
 
@@ -245,8 +236,7 @@ def parse_waynet(
             direction = waypoint.direction
 
             target_direction = Vector((direction.x, direction.z, direction.y))
-            quat = target_direction.to_track_quat("Y", "Z")
-            vob_rotation = quat.to_euler()
+            vob_rotation = target_direction.to_track_quat("Y", "Z")
 
             vob_position = get_blender_obj_position(position, scale)
             vob_name = waypoint.name.lower()
