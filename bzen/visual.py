@@ -100,18 +100,19 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
         stack = [entry for path in paths for entry in scandir(path)]
         while stack:
             entry = stack.pop()
-            entry_ext = suffix(entry.name).lower()
-            if not entry.is_dir():
-                if entry_ext in [ve.value for ve in VisualExtension]:
-                    extension = VisualExtension(entry_ext)
-                    name = entry.name.lower()
-                    if extension is VisualExtension.TEX:
-                        name = with_suffix(name.replace("-c.", "."), "tga", True)
-                    visuals[name] = lambda path=entry.path, extension=VisualExtension(entry_ext): load_visual(
-                        path, extension
-                    )
-            else:
+            if entry.is_dir():
                 stack.extend([entry for entry in scandir(entry.path)])
+                continue
+
+            entry_ext = suffix(entry.name).lower()
+            if entry_ext in [ve.value for ve in VisualExtension]:
+                extension = VisualExtension(entry_ext)
+                name = entry.name.lower()
+                if extension is VisualExtension.TEX:
+                    name = with_suffix(name.replace("-c.", "."), "tga", True)
+                visuals[name] = lambda path=entry.path, extension=VisualExtension(entry_ext): load_visual(
+                    path, extension
+                )
 
     except Exception as e:
         error("Failed to index visuals from disk")
