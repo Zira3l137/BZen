@@ -50,47 +50,51 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
         bmat = bpy.data.materials.new(name=material.name)
         bmat.use_nodes = True
         bmat.use_backface_culling = True
-
-        nodes = bmat.node_tree.nodes
-        links = bmat.node_tree.links
-
-        for node in nodes:
-            nodes.remove(node)
-
-        shader = nodes.new(type="ShaderNodeBsdfPrincipled")
-        shader.location = (-0, 0)
-
-        output = nodes.new(type="ShaderNodeOutputMaterial")
-        output.location = (400, 0)
-
-        texture_node = nodes.new(type="ShaderNodeTexImage")
-        texture_node.location = (-400, 0)
-
-        texture_name = material.texture.lower()
-
-        texture_obj = None
-        if texture_name in visuals_cache:
-            texture_obj = visuals_cache[texture_name]()
-
-        image = (bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj)) if texture_obj else None  # type: ignore
-        texture_node.image = image  # type: ignore
-
-        bmat.diffuse_color = material.color
-        shader.inputs[12].default_value = 0  # type: ignore # Metallic
-        shader.inputs[2].default_value = 1  # type: ignore # Roughness
-
         bmat.blend_method = "CLIP"
         try:
             bmat.shadow_method = "CLIP"  # type: ignore
         except AttributeError:
             pass
 
-        links.new(texture_node.outputs["Color"], shader.inputs["Base Color"])
-        links.new(texture_node.outputs["Alpha"], shader.inputs["Alpha"])
-        links.new(shader.outputs["BSDF"], output.inputs["Surface"])
+        nodes = bmat.node_tree.nodes
+        links = bmat.node_tree.links
+        nodes.clear()
+
+        texture_node = nodes.new("ShaderNodeTexImage")
+        invert_node = nodes.new("ShaderNodeInvert")
+        diffuse_node = nodes.new("ShaderNodeBsdfDiffuse")
+        mix_shader = nodes.new("ShaderNodeMixShader")
+        output_node = nodes.new("ShaderNodeOutputMaterial")
+
+        texture_node.location = (-800, 0)
+        invert_node.location = (-600, -100)
+        diffuse_node.location = (-400, 0)
+        mix_shader.location = (-200, 0)
+        output_node.location = (200, 0)
+
+        texture_name = material.texture.lower()
+        texture_obj = visuals_cache.get(texture_name)  # type: ignore
+        image = (
+            (bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj())) if texture_obj else None  # type: ignore
+        )
+        texture_node.image = image  # type: ignore
+
+        diffuse_node.inputs["Roughness"].default_value = 1.0  # type: ignore
+        bmat.diffuse_color = material.color
+
+        links.new(texture_node.outputs["Color"], diffuse_node.inputs["Color"])
+        links.new(texture_node.outputs["Alpha"], invert_node.inputs["Color"])
+        links.new(invert_node.outputs["Color"], mix_shader.inputs["Fac"])
+        links.new(diffuse_node.outputs["BSDF"], mix_shader.inputs[2])
+        links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+
+        transparent_shader = nodes.new("ShaderNodeBsdfTransparent")
+        transparent_shader.location = (-400, -200)
+        invert_node.inputs[0].default_value = 0.0  # type: ignore
+        links.new(transparent_shader.outputs["BSDF"], mix_shader.inputs[1])
 
     except Exception as e:
-        error(f"Failed to create material {material.name}")
+        print(f"Failed to create material {material.name}: {e}")
         raise e
 
     return bmat
