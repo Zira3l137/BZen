@@ -182,11 +182,11 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
         obj_cache = {}
 
         for vob_name, vob_data in vobs.items():
-            mesh_hash = hash(vob_data.mesh)
+            vob_mesh = vob_data.mesh
             result = None
 
-            if mesh_hash in mesh_cache:
-                existing_obj = obj_cache[mesh_hash]
+            if vob_mesh in mesh_cache:
+                existing_obj = obj_cache[vob_mesh]
                 result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
             else:
                 result = create_obj_from_vob_data(vob_name, vob_data, visuals_cache)
@@ -194,8 +194,8 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
                     warning(f"VOB {vob_name} has no mesh, skipping")
                     continue
 
-                mesh_cache.add(mesh_hash)
-                obj_cache[mesh_hash] = result
+                mesh_cache.add(vob_mesh)
+                obj_cache[vob_mesh] = result
 
             success_count += 1
 
