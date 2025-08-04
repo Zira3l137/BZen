@@ -4,12 +4,26 @@ from typing import Dict, Optional, Tuple, cast
 from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
 from utils import trim_suffix
-from visual import (MeshData, VisualLoader, parse_decal_mesh,
-                    parse_multi_resolution_mesh, parse_visual_data,
-                    parse_visual_data_from_vob)
-from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
-                    MultiResolutionMesh, Vec3f, VirtualObject, VisualType,
-                    VobType, World)
+from visual import (
+    MeshData,
+    VisualLoader,
+    parse_decal_mesh,
+    parse_multi_resolution_mesh,
+    parse_visual_data,
+    parse_visual_data_from_vob,
+)
+from zenkit import (
+    DaedalusInstanceType,
+    DaedalusVm,
+    ItemInstance,
+    Mat3x3,
+    MultiResolutionMesh,
+    Vec3f,
+    VirtualObject,
+    VisualType,
+    VobType,
+    World,
+)
 
 invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
@@ -33,6 +47,11 @@ invisible_vob = {
 
 
 class ParseMeshError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class ParseItemVisualError(Exception):
     def __init__(self, message: str):
         super().__init__(message)
 
@@ -166,55 +185,49 @@ def parse_blender_obj_data_from_world(
     visuals_cache: Dict[str, VisualLoader],
     scale: float = 0.01,
 ) -> Dict[str, BlenderObjectData]:
-    try:
-        blender_objects: Dict[str, BlenderObjectData] = {}
-        mesh_cache: Dict[str, MeshData] = {}
-        stack = world.root_objects
-        count = 0
+    blender_objects: Dict[str, BlenderObjectData] = {}
+    mesh_cache: Dict[str, MeshData] = {}
+    stack = world.root_objects
 
-        while stack:
-            vob = stack.pop()
-            vob_type = vob.type
-            vob_visual_type = vob.visual.type
+    while stack:
+        vob = stack.pop()
+        vob_type = vob.type
+        vob_visual_type = vob.visual.type
 
-            try:
-                # Skip level mesh
-                if vob_type is VobType.zCVobLevelCompo or vob_visual_type is VisualType.PARTICLE_EFFECT:
-                    stack.extend(vob.children)
-                    continue
-
-                # Invisible VOBs
-                if vob_type in invisible_vob:
-                    bobj_name, bobj_data = get_special_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
-                    blender_objects[bobj_name] = bobj_data
-
-                # Decals
-                elif vob_visual_type is VisualType.DECAL:
-                    bobj_name, bobj_data = get_decal_blender_obj_data(vob, mesh_cache, scale)
-                    blender_objects[bobj_name] = bobj_data
-
-                # Items
-                elif vob_type is VobType.oCItem:
-                    bobj_name, bobj_data = get_item_blender_obj_data(vob, vm, mesh_cache, visuals_cache, scale)
-                    blender_objects[bobj_name] = bobj_data
-
-                # Generic VOBs with standard visuals
-                else:
-                    bobj_name, bobj_data = get_generic_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
-                    blender_objects[bobj_name] = bobj_data
-
-            except ParseMeshError as e:
-                error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
-
-            # Traverse children
-            if vob.children:
+        try:
+            # Skip level mesh
+            if vob_type is VobType.zCVobLevelCompo or vob_visual_type is VisualType.PARTICLE_EFFECT:
                 stack.extend(vob.children)
+                continue
 
-            count += 1
+            # Invisible VOBs
+            if vob_type in invisible_vob:
+                bobj_name, bobj_data = get_special_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
+                blender_objects[bobj_name] = bobj_data
 
-    except Exception as e:
-        error("Failed to index VOBs")
-        raise e
+            # Decals
+            elif vob_visual_type is VisualType.DECAL:
+                bobj_name, bobj_data = get_decal_blender_obj_data(vob, mesh_cache, scale)
+                blender_objects[bobj_name] = bobj_data
+
+            # Items
+            elif vob_type is VobType.oCItem:
+                bobj_name, bobj_data = get_item_blender_obj_data(vob, vm, mesh_cache, visuals_cache, scale)
+                blender_objects[bobj_name] = bobj_data
+
+            # Generic VOBs with standard visuals
+            else:
+                bobj_name, bobj_data = get_generic_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
+                blender_objects[bobj_name] = bobj_data
+
+        except ParseMeshError as e:
+            error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
+        except ParseItemVisualError as e:
+            error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
+
+        # Traverse children
+        if vob.children:
+            stack.extend(vob.children)
 
     info(f"Indexed {len(blender_objects)} VOBs")
     return blender_objects
@@ -264,8 +277,7 @@ def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
             error(f"Item {obj.name} has no visual")
             return None
 
-    except Exception as e:
-        error("Failed to parse item visual")
-        raise e
+    except AttributeError as e:
+        raise ParseItemVisualError(f"Failed to get visual for {obj.name}: {e.__repr__()}")
 
     return item_visual
