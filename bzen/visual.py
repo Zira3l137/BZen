@@ -125,7 +125,7 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
 
 def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoader]):
     paths = [
-        canonical_case_path(game_directory / "_work" / "data" / category / "_compiled_extension")
+        canonical_case_path(game_directory / "_work" / "data" / category / "_compiled")
         for category in VISUAL_CATEGORIES
     ]
 
