@@ -11,12 +11,18 @@ if str(script_dir) not in sys.path:
 
 from logging import error, info
 
+from utils import blender_clean_scene, blender_save_changes, canonical_case_path, install_dependencies_locally, suffix
+
+try:
+    from zenkit import DaedalusVm, Vfs, VfsNode, World
+except ModuleNotFoundError:
+    install_dependencies_locally()
+    from zenkit import DaedalusVm, Vfs, VfsNode, World
+
 from log import logging_setup
 from scene import create_obj_from_mesh, create_vobs
-from utils import blender_save_changes, canonical_case_path, suffix
 from visual import index_visuals, parse_world_mesh
 from vob import parse_blender_obj_data_from_world, parse_waynet
-from zenkit import DaedalusVm, Vfs, VfsNode, World
 
 
 def parse_args() -> Dict[str, Any]:
@@ -112,6 +118,9 @@ def main():
         should_parse_waynet: bool = args["waynet"]
 
         logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
+
+        info(f"Cleaning scene")
+        blender_clean_scene()
 
         info(f"Loading world")
         world = load_world(input_file_name, game_directory)
