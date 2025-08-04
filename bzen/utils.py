@@ -1,5 +1,7 @@
+import sys
 from os import scandir
 from pathlib import Path
+from subprocess import run
 
 import bpy
 
@@ -44,6 +46,25 @@ def canonical_case_path(path: Path | str) -> Path:
         current = Path(matches[0].path)
 
     return current.resolve()
+
+
+def install_dependencies_locally():
+    python = Path(sys.executable)
+    run([python, "-m", "pip", "install", "-r", "requirements.txt"])
+
+
+def blender_clean_scene():
+    scene = bpy.context.scene
+
+    if scene:
+
+        for child_collection in scene.collection.children:
+            scene.collection.children.unlink(child_collection)
+
+        for child_object in scene.collection.objects:
+            scene.collection.objects.unlink(child_object)
+
+        bpy.ops.outliner.orphans_purge(do_recursive=True)
 
 
 def blender_save_changes(*args, **kwargs):
