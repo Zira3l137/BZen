@@ -4,26 +4,12 @@ from typing import Dict, Optional, Tuple, cast
 from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
 from utils import trim_suffix
-from visual import (
-    MeshData,
-    VisualLoader,
-    parse_decal_mesh,
-    parse_multi_resolution_mesh,
-    parse_visual_data,
-    parse_visual_data_from_vob,
-)
-from zenkit import (
-    DaedalusInstanceType,
-    DaedalusVm,
-    ItemInstance,
-    Mat3x3,
-    MultiResolutionMesh,
-    Vec3f,
-    VirtualObject,
-    VisualType,
-    VobType,
-    World,
-)
+from visual import (MeshData, VisualLoader, parse_decal_mesh,
+                    parse_multi_resolution_mesh, parse_visual_data,
+                    parse_visual_data_from_vob)
+from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
+                    MultiResolutionMesh, Vec3f, VirtualObject, VisualType,
+                    VobType, World)
 
 invisible_vob = {
     VobType.zCVobStartpoint: "invisible_zcvobstartpoint.mrm",
@@ -132,7 +118,7 @@ def get_item_blender_obj_data(
 ) -> Tuple[str, BlenderObjectData]:
     item_visual_name = parse_item_visual_name(vob, vm)
     if not item_visual_name:
-        raise Exception(f"Item {vob.name} has no visual")
+        raise ParseItemVisualError(f"Item {vob.name} has no visual")
 
     blender_obj_name = f"{trim_suffix(item_visual_name).lower()}_{vob.id}"
     mesh_data = None
@@ -236,34 +222,29 @@ def parse_blender_obj_data_from_world(
 def parse_waynet(
     world: World, visuals_cache: Dict[str, VisualLoader], scale: float = 0.01
 ) -> Dict[str, BlenderObjectData]:
-    try:
-        vobs = {}
-        waynet = world.way_net
-        waypoints = waynet.points
+    vobs = {}
+    waynet = world.way_net
+    waypoints = waynet.points
 
-        wp_mrm = cast(MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]())
-        wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)
+    wp_mrm = cast(MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]())
+    wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)
 
-        for waypoint in waypoints:
-            position = waypoint.position
-            direction = waypoint.direction
+    for waypoint in waypoints:
+        position = waypoint.position
+        direction = waypoint.direction
 
-            target_direction = Vector((direction.x, direction.z, direction.y))
-            vob_rotation = target_direction.to_track_quat("Y", "Z")
+        target_direction = Vector((direction.x, direction.z, direction.y))
+        vob_rotation = target_direction.to_track_quat("Y", "Z")
 
-            vob_position = get_blender_obj_position(position, scale)
-            vob_name = waypoint.name.lower()
+        vob_position = get_blender_obj_position(position, scale)
+        vob_name = waypoint.name.lower()
 
-            vobs[vob_name] = BlenderObjectData(
-                name=vob_name,
-                mesh=wp_mesh,
-                position=vob_position,
-                rotation=vob_rotation,
-            )
-
-    except Exception as e:
-        error("Failed to index Waynet")
-        raise e
+        vobs[vob_name] = BlenderObjectData(
+            name=vob_name,
+            mesh=wp_mesh,
+            position=vob_position,
+            rotation=vob_rotation,
+        )
 
     return vobs
 

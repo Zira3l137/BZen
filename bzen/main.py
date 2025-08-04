@@ -1,5 +1,5 @@
 import subprocess
-from argparse import ArgumentError, ArgumentParser
+from argparse import ArgumentParser
 from logging import error
 from pathlib import Path
 from typing import Any, Dict
@@ -19,33 +19,30 @@ def parse_args() -> Dict[str, Any]:
         verbosity: Verbosity level (0-3) (default: 0)
     """
     parser = ArgumentParser()
-    try:
-        parser.add_argument("input", type=str, help="Input file name")
-        parser.add_argument("blender-exe", type=Path, help="Path to the blender executable")
-        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
-        parser.add_argument(
-            "-o",
-            "--output",
-            type=Path,
-            help="Path to the output file (defaults to current directory)",
-        )
-        parser.add_argument(
-            "-s",
-            "--scale",
-            type=float,
-            default=0.01,
-            help="Scale factor (default: 0.01)",
-        )
-        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
-        parser.add_argument(
-            "-v",
-            "--verbosity",
-            type=int,
-            default=0,
-            help="Verbosity level (0-3) (default: 0)",
-        )
-    except ArgumentError as e:
-        raise e
+    parser.add_argument("input", type=str, help="Input file name")
+    parser.add_argument("blender-exe", type=Path, help="Path to the blender executable")
+    parser.add_argument("game-directory", type=Path, help="Path to the game directory")
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Path to the output file (defaults to current directory)",
+    )
+    parser.add_argument(
+        "-s",
+        "--scale",
+        type=float,
+        default=0.01,
+        help="Scale factor (default: 0.01)",
+    )
+    parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
+    parser.add_argument(
+        "-v",
+        "--verbosity",
+        type=int,
+        default=0,
+        help="Verbosity level (0-3) (default: 0)",
+    )
     return parser.parse_args().__dict__
 
 
