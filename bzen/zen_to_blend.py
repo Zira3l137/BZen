@@ -1,7 +1,6 @@
 import sys
-from argparse import ArgumentError, ArgumentParser
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict
 
 script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
@@ -11,7 +10,9 @@ if str(script_dir) not in sys.path:
 
 from logging import error, info
 
-from utils import blender_clean_scene, blender_save_changes, canonical_case_path, install_dependencies_locally, suffix
+from utils import (blender_clean_scene, blender_parse_cli,
+                   blender_save_changes, canonical_case_path,
+                   install_dependencies_locally, suffix)
 
 try:
     from zenkit import DaedalusVm, Vfs, VfsNode, World
@@ -23,30 +24,6 @@ from log import logging_setup
 from scene import create_obj_from_mesh, create_vobs
 from visual import index_visuals, parse_world_mesh
 from vob import parse_blender_obj_data_from_world, parse_waynet
-
-
-def parse_args() -> Dict[str, Any]:
-    """
-    Args:
-        input: Path to the input file
-        game_directory: Path to the game directory
-        output: Path to the output file
-    """
-    args = sys.argv[sys.argv.index("--") + 1 :]
-    parser = ArgumentParser()
-
-    try:
-        parser.add_argument("input", type=str, help="Input file name")
-        parser.add_argument("game-directory", type=Path, help="Path to the game directory")
-        parser.add_argument("output", type=Path, help="Path to the output file")
-        parser.add_argument("scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
-        parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
-        parser.add_argument("verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
-
-    except ArgumentError as e:
-        raise e
-
-    return parser.parse_args(args).__dict__
 
 
 def load_world_from_archive(name: str, game_directory: Path) -> World:
@@ -110,14 +87,14 @@ def load_world(input: str, game_directory: Path) -> World:
 
 def main():
     try:
-        args = parse_args()
-        input_file_name: str = args["input"]
-        game_directory: Path = args["game-directory"]
-        output_path: Path = args["output"]
-        scale: float = args["scale"]
-        should_parse_waynet: bool = args["waynet"]
+        args = blender_parse_cli()
+        input_file_name: str = args.input
+        game_directory: Path = args.game_directory
+        output_path: Path = args.output
+        scale: float = args.scale
+        should_parse_waynet: bool = args.waynet
 
-        logging_setup(args["verbosity"], output_path.with_name(f"{output_path.stem}.log"))
+        logging_setup(args.verbosity, output_path.with_name(f"{output_path.stem}.log"))
 
         info(f"Cleaning scene")
         blender_clean_scene()

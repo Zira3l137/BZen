@@ -1,4 +1,5 @@
 import sys
+from argparse import ArgumentParser, Namespace
 from os import scandir
 from pathlib import Path
 from subprocess import run
@@ -46,6 +47,29 @@ def canonical_case_path(path: Path | str) -> Path:
         current = Path(matches[0].path)
 
     return current.resolve()
+
+
+def blender_parse_cli() -> Namespace:
+    """
+    Args:
+        input: Path to the input file
+        game_directory: Path to the game directory
+        output: Path to the output file
+        scale: Scale factor (default: 0.01)
+        waynet: Parse waynet (default: False)
+        verbosity: Verbosity level (0-3) (default: 0)
+    """
+    args = sys.argv[sys.argv.index("--") + 1 :]
+    parser = ArgumentParser()
+
+    parser.add_argument("input", type=str, help="Input file name")
+    parser.add_argument("game_directory", type=Path, help="Path to the game directory")
+    parser.add_argument("output", type=Path, help="Path to the output file")
+    parser.add_argument("scale", type=float, default=0.01, help="Scale factor (default: 0.01)")
+    parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
+    parser.add_argument("-v", "--verbosity", type=int, default=0, help="Verbosity level (0-3) (default: 0)")
+
+    return parser.parse_args(args)
 
 
 def install_dependencies_locally():

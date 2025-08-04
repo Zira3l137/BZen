@@ -81,6 +81,7 @@ def main():
         str(game_directory),
         str(output),
         str(scale),
+        "-v",
         str(verbosity),
     ]
 
