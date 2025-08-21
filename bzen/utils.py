@@ -5,6 +5,8 @@ from subprocess import run
 
 import bpy
 
+ZENKIT_URL = "git+https://github.com/Zira3l137/ZenKit4Py.git"
+
 
 def with_suffix(path: str, suffix: str, replace: bool = False) -> str:
     result = path.rsplit(".", 1)[0] if replace else path
@@ -50,7 +52,7 @@ def canonical_case_path(path: Path | str) -> Path:
 
 def install_dependencies_locally():
     python = Path(sys.executable)
-    run([python, "-m", "pip", "install", "-r", "requirements.txt"])
+    run([python, "-m", "pip", "install", ZENKIT_URL])
 
 
 def blender_clean_scene():
