@@ -5,3 +5,4 @@ res/
 __pycache__
 *.ps1
 *.bat
+*.egg-info
