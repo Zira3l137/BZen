@@ -84,7 +84,7 @@ class MaterialData:
 
 @dataclass(frozen=True, slots=True)
 class MeshData:
-    vertices: list[Vector] = field(default_factory=list)
+    vertices: List[Vector] = field(default_factory=list)
     faces: List[Tuple[int, int, int]] = field(default_factory=list)
     normals: List[Vector] = field(default_factory=list)
     uvs: List[Tuple[float, float]] = field(default_factory=list)

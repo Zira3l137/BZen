@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 from typing import Dict
+from time import perf_counter
 
 script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
@@ -10,9 +11,14 @@ if str(script_dir) not in sys.path:
 
 from logging import error, info
 
-from utils import (blender_clean_scene, blender_parse_cli,
-                   blender_save_changes, canonical_case_path,
-                   install_dependencies_locally, suffix)
+from utils import (
+    blender_clean_scene,
+    blender_parse_cli,
+    blender_save_changes,
+    canonical_case_path,
+    install_dependencies_locally,
+    suffix,
+)
 
 try:
     from zenkit import DaedalusVm, Vfs, VfsNode, World
@@ -93,6 +99,7 @@ def main():
         output_path: Path = args.output
         scale: float = args.scale
         should_parse_waynet: bool = args.waynet
+        perf_journal: Dict[str, float] = dict()
 
         logging_setup(args.verbosity, output_path.with_name(f"{output_path.stem}.log"))
 
@@ -112,33 +119,55 @@ def main():
         )
 
         info("Indexing visuals")
+        start_time = perf_counter()
         visuals = index_visuals(game_directory)
+        elapsed_time = perf_counter() - start_time
+        perf_journal["Visuals indexed in (ms) "] = elapsed_time * 1000
 
         info("Indexing VOBs")
+        start_time = perf_counter()
         vobs = parse_blender_obj_data_from_world(world, vm, visuals, scale)
+        elapsed_time = perf_counter() - start_time
+        perf_journal["VOBs indexed in (ms) "] = elapsed_time * 1000
 
         if should_parse_waynet:
             info("Parsing waynet")
+            start_time = perf_counter()
             waynet_data = parse_waynet(world, visuals, scale)
+            elapsed_time = perf_counter() - start_time
+            perf_journal["Waynet parsed in (ms) "] = elapsed_time * 1000
             vobs.update(waynet_data)
 
         if len(vobs) == 0:
             error("Attention! No VOB entries were found during parsing!")
 
         info("Parsing world data")
+        start_time = perf_counter()
         wrld_mesh_data = parse_world_mesh(world, 0.01)
+        elapsed_time = perf_counter() - start_time
+        perf_journal["World mesh parsed in (ms) "] = elapsed_time * 1000
 
         if wrld_mesh_data.is_empty():
             error("Attention! World mesh is empty!")
 
         info("Creating world")
+        start_time = perf_counter()
         create_obj_from_mesh("LEVEL", wrld_mesh_data, visuals)
+        elapsed_time = perf_counter() - start_time
+        perf_journal["World created in (ms) "] = elapsed_time * 1000
 
         info("Creating VOBs")
+        start_time = perf_counter()
         create_vobs(vobs, visuals)
+        elapsed_time = perf_counter() - start_time
+        perf_journal["VOBs created in (ms) "] = elapsed_time * 1000
 
         info(f"Saving to {output_path}...")
         blender_save_changes(filepath=str(output_path))
+
+        for key, value in perf_journal.items():
+            info(f"{key}: {value:.3f}")
+
         info("Done.")
 
     except Exception as e:

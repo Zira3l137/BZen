@@ -3,6 +3,7 @@ from logging import error, info, warning
 from typing import Dict, Optional
 
 import bpy
+import numpy as np  # numpy is bundled with Blender
 from mathutils import Quaternion, Vector
 from visual import MaterialData, MeshData, VisualLoader
 from zenkit import Texture
@@ -16,24 +17,16 @@ class BlenderObjectData:
     rotation: Quaternion = field(default_factory=Quaternion)
 
 
-def flip_image_vertically(data: list[float], width: int, height: int) -> list[float]:
-    flipped = []
-    row_len = width * 4
-
-    for y in reversed(range(height)):
-        start = y * row_len
-        end = start + row_len
-        flipped.extend(data[start:end])
-
-    return flipped
-
-
 def create_texture(name: str, texture: Texture) -> bpy.types.Image:
     img_bytes = texture.mipmap_rgba(0)
-    blender_img_data = flip_image_vertically([b / 255.0 for b in img_bytes], texture.width, texture.height)
+    width, height = texture.width, texture.height
 
-    img = bpy.data.images.new(name, width=texture.width, height=texture.height, alpha=True)
-    img.pixels[:] = blender_img_data  # type: ignore
+    pixels = np.frombuffer(bytes(img_bytes), dtype=np.uint8).astype(np.float32) / 255.0
+    pixels = pixels.reshape((height, width, 4))
+    pixels = np.flipud(pixels)  # Blender's pixel origin is bottom-left
+
+    img = bpy.data.images.new(name, width=width, height=height, alpha=True)
+    img.pixels.foreach_set(pixels.ravel())
     img.pack()
 
     return img
@@ -106,21 +99,18 @@ def create_obj_from_mesh(
 
     if mesh_data.uvs:
         uv_layer = mesh.uv_layers.new(name="UVMap")
-        for i in range(len(uv_layer.data)):
-            uv_layer.data[i].uv = mesh_data.uvs[i]
+        flat_uvs = [coord for uv in mesh_data.uvs for coord in uv]
+        uv_layer.data.foreach_set("uv", flat_uvs)
 
-    for material in mesh_data.materials:
-        mat = bpy.data.materials.get(material.name)
-        if not mat:
-            mat = create_material(material, visuals_cache)
-        mesh.materials.append(mat)
-
-    for index, polygon in enumerate(mesh.polygons):
-        if not len(mesh_data.materials):
-            warning("Mesh has no materials")
-            continue
-
-        polygon.material_index = mesh_data.material_indices[index]
+    if not mesh_data.materials:
+        warning("Mesh has no materials")
+    else:
+        for material in mesh_data.materials:
+            mat = bpy.data.materials.get(material.name)
+            if not mat:
+                mat = create_material(material, visuals_cache)
+            mesh.materials.append(mat)
+        mesh.polygons.foreach_set("material_index", mesh_data.material_indices)
 
     mesh.update()
 
