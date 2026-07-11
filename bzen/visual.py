@@ -225,7 +225,7 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
         )
         append_material(MaterialData(mat.name, color, mat.texture))
 
-    vertex_cache, polygon_cache = {}, set()
+    vertex_cache, normal_cache, position_cache, seen_leaf_indices = {}, {}, {}, set()
     positions, features, polygons, leaf_polygon_indices = (
         mesh.positions,
         mesh.features,
@@ -234,16 +234,23 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     )
 
     for leaf_index in leaf_polygon_indices:
+        # Dedupe by the plain int leaf/polygon index rather than by Polygon
+        # object equality: this is O(1) hash+compare regardless of how the
+        # FFI binding implements Polygon.__eq__/__hash__, and sidesteps any
+        # risk of a deep/content comparison firing on hash collisions.
+        if leaf_index in seen_leaf_indices:
+            continue
+        seen_leaf_indices.add(leaf_index)
+
         polygon = polygons[leaf_index]
         position_indices, feature_indices = (
             polygon.position_indices,
             polygon.feature_indices,
         )
 
-        if polygon in polygon_cache or polygon.is_portal or polygon.is_ghost_occluder:
+        if polygon.is_portal or polygon.is_ghost_occluder:
             continue
 
-        polygon_cache.add(polygon)
         for index in range(1, len(position_indices) - 1):
             face = []
             face_normals, face_uvs = [], []
@@ -253,8 +260,10 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
                 position_index = position_indices[vertex_index]
                 feature_index = feature_indices[vertex_index]
 
-                position = positions[position_index] * scale
-                position = (position.x, position.z, position.y)
+                if position_index not in position_cache:
+                    raw_position = positions[position_index] * scale
+                    position_cache[position_index] = (raw_position.x, raw_position.z, raw_position.y)
+                position = position_cache[position_index]
 
                 if position not in vertex_cache:
                     vertex_cache[position] = len(vertices)
@@ -264,10 +273,17 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
 
                 vertex_feature = features[feature_index]
                 uv = vertex_feature.texture
-                normal = Vector([coord for coord in vertex_feature.normal])
+
+                # Normals repeat heavily across triangle-fan corners and
+                # shared BSP-leaf boundaries; building a fresh mathutils.Vector
+                # per corner (as before) redoes the same construction for the
+                # same feature_index over and over. Cache by feature_index.
+                if feature_index not in normal_cache:
+                    normal = vertex_feature.normal
+                    normal_cache[feature_index] = Vector((normal.x, normal.y, normal.z))
 
                 face_uvs.append((uv.x, -uv.y))
-                face_normals.append(normal)
+                face_normals.append(normal_cache[feature_index])
 
             extend_uvs(face_uvs)
             extend_normals(face_normals)

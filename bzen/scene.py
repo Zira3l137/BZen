@@ -151,24 +151,22 @@ def create_instance_from_vob_data(
 
 def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, VisualLoader]):
     success_count = 0
-    mesh_cache = set()
-    obj_cache = {}
+    obj_cache: Dict[int, bpy.types.Object] = {}  # keyed by id(mesh), not mesh content
 
     for vob_name, vob_data in vobs.items():
         vob_mesh = vob_data.mesh
+        mesh_key = id(vob_mesh)
         result = None
 
-        if vob_mesh in mesh_cache:
-            existing_obj = obj_cache[vob_mesh]
+        if mesh_key in obj_cache:
+            existing_obj = obj_cache[mesh_key]
             result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
         else:
             result = create_obj_from_vob_data(vob_name, vob_data, visuals_cache)
             if not result:
                 warning(f"VOB {vob_name} has no mesh, skipping")
                 continue
-
-            mesh_cache.add(vob_mesh)
-            obj_cache[vob_mesh] = result
+            obj_cache[mesh_key] = result
 
         success_count += 1
 
