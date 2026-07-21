@@ -9,6 +9,20 @@ from visual import MaterialData, MeshData, VisualLoader
 from zenkit import Texture
 
 
+"""
+Data model for Blender objects created from ZenKit VOBs.
+
+This is a frozen dataclass with slots (memory-efficient, immutable).
+Used to pass parsed VOB data through the conversion pipeline to
+the Blender object creation functions.
+
+The mesh data is computed during VOB parsing; position and
+rotation are also computed at parse time so that the create_*
+functions can construct Blender objects without additional
+transform math.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class BlenderObjectData:
     name: str = field(default_factory=str)
@@ -18,6 +32,24 @@ class BlenderObjectData:
 
 
 def create_texture(name: str, texture: Texture) -> bpy.types.Image:
+    """
+    Convert a ZenKit Texture into a Blender image asset.
+
+    ZenKit stores textures with top-left pixel origin, uint8 RGBA (0-255),
+    and a separate alpha layer. Blender expects bottom-left origin,
+    float32 RGBA (0-1), single pixel array. This function:
+
+    1. Extracts the mipmapped RGBA buffer (uint8).
+    2. Converts to float32 and normalizes to [0, 1] range.
+    3. Reorders axes and flips vertically (top-left -> bottom-left).
+    4. Creates and packs the Blender image.
+
+    Texture packing embeds the image data directly into the .blend file,
+    eliminating external file dependencies at runtime.
+
+    This is called only when a material references a texture that has not
+    yet been loaded into the visuals cache.
+    """
     img_bytes = texture.mipmap_rgba(0)
     width, height = texture.width, texture.height
 
@@ -33,6 +65,21 @@ def create_texture(name: str, texture: Texture) -> bpy.types.Image:
 
 
 def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoader]) -> bpy.types.Material:
+    """
+    Create a Blender material for a VOB material definition.
+
+    Materials are cached in the Blender material registry to avoid
+    creating duplicate materials for VOBs that share the same
+    visual asset (e.g., multiple VOBs using the same texture).
+
+    The material is built using Blender's node system:
+    ShaderNodeTexImage (texture) -> ShaderNodeInvert (alpha) +
+    ShaderNodeBsdfDiffuse (color) -> ShaderNodeMixShader +
+    ShaderNodeBsdfTransparent (transparency) -> ShaderNodeOutputMaterial.
+
+    If the material has no texture, a simple diffuse color material is
+    created without the node graph.
+    """
     if existing_material := bpy.data.materials.get(material.name):
         return existing_material
 
@@ -93,6 +140,22 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
 def create_obj_from_mesh(
     unique_name: str, mesh_data: MeshData, visuals_cache: Dict[str, VisualLoader]
 ) -> bpy.types.Object:
+    """
+    Create a Blender object from a MeshData dataclass.
+
+    The mesh data is provided by the VOB parsing stage. This function
+    creates a Blender mesh object, assigns UV data if present, and
+    applies materials from the visuals cache.
+
+    Materials are referenced by name in the mesh data and resolved
+    from the visuals_cache (which includes already-created Blender
+    materials or loader callables). Materials are created if they
+    don't yet exist in the registry.
+
+    The object is linked to the context collection (the active Blender
+    scene). Objects created by this function are never unlinked — they
+    are part of the converted world.
+    """
     mesh = bpy.data.meshes.new(unique_name)
     mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
     mesh.normals_split_custom_set(mesh_data.normals)  # type: ignore
@@ -124,6 +187,16 @@ def create_obj_from_mesh(
 def create_obj_from_vob_data(
     unique_name: str, vob_data: BlenderObjectData, visuals_cache: Dict[str, VisualLoader]
 ) -> Optional[bpy.types.Object]:
+    """
+    Create a Blender object from BlenderObjectData.
+
+    This is called once for each distinct VOB mesh — the mesh data
+    is used to create a Blender mesh object, and the object's position
+    and rotation are set from the BlenderObjectData.
+
+    Returns None if the VOB has no mesh data (which is a warning
+    condition, not an error).
+    """
     vob_mesh = vob_data.mesh
 
     if not vob_mesh:
@@ -140,6 +213,16 @@ def create_obj_from_vob_data(
 def create_instance_from_vob_data(
     unique_name: str, obj: bpy.types.Object, vob_data: BlenderObjectData
 ) -> bpy.types.Object:
+    """
+    Create a Blender object instance from an existing Blender object.
+
+    This function clones a Blender object (creating a new object that
+    references the same mesh data) and sets the clone's position and
+    rotation. Used to instance VOBs that share the same mesh, avoiding
+    the creation of duplicate mesh objects.
+
+    The cloned object is linked to the context collection.
+    """
     instance = bpy.data.objects.new(unique_name, obj.data)
     instance.rotation_mode = "QUATERNION"
     instance.location = vob_data.position or Vector((0, 0, 0))
@@ -150,6 +233,25 @@ def create_instance_from_vob_data(
 
 
 def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, VisualLoader]):
+    """
+    Create Blender objects for all VOBs in a world.
+
+    This function implements the VOB instancing optimization: VOBs that
+    share the same mesh data are represented by a single Blender mesh
+    object with multiple instances. This avoids creating duplicate mesh
+    objects (which would be expensive in Blender and bloat .blend files).
+
+    The instancing works by keying created objects by `id(vob_data.mesh)`
+    (the Python object id of the mesh data, not the mesh content). If
+    a VOB's mesh has already been seen, a new object instance is created
+    for that VOB using the existing mesh object. Otherwise, the mesh
+    is created fresh and the object is linked to the context collection.
+
+    After processing, the Blender view layer is updated to reflect the
+    new objects.
+
+    VOBs with no mesh data are skipped (with a warning).
+    """
     success_count = 0
     obj_cache: Dict[int, bpy.types.Object] = {}  # keyed by id(mesh), not mesh content
 
