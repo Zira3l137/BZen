@@ -16,6 +16,7 @@ from utils import (
     blender_parse_cli,
     blender_save_changes,
     canonical_case_path,
+    insert_unique,
     install_dependencies_locally,
     suffix,
 )
@@ -136,7 +137,10 @@ def main():
             waynet_data = parse_waynet(world, visuals, scale)
             elapsed_time = perf_counter() - start_time
             perf_journal["Waynet parsed in (ms) "] = elapsed_time * 1000
-            vobs.update(waynet_data)
+            # Waypoints are keyed by their own names, VOBs by visual name + id;
+            # the two can collide, so merge without letting one replace the other.
+            for name, waypoint_data in waynet_data.items():
+                insert_unique(vobs, name, waypoint_data)
 
         if len(vobs) == 0:
             error("Attention! No VOB entries were found during parsing!")

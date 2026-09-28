@@ -11,11 +11,33 @@ import sys
 from argparse import ArgumentParser, Namespace
 from os import scandir
 from pathlib import Path
+from logging import warning
 from subprocess import run
+from typing import Dict, TypeVar
 
 import bpy
 
 ZENKIT_URL = "git+https://github.com/Zira3l137/ZenKit4Py.git"
+
+T = TypeVar("T")
+
+
+def insert_unique(mapping: Dict[str, T], key: str, value: T) -> str:
+    """
+    Insert ``value`` into ``mapping`` without overwriting an existing entry.
+
+    If ``key`` is already taken, the value is stored under the first free
+    "key.001", "key.002", ... instead (Blender's own naming style) and a
+    warning is logged. Returns the key actually used.
+    """
+    unique_key, counter = key, 0
+    while unique_key in mapping:
+        counter += 1
+        unique_key = f"{key}.{counter:03d}"
+    if unique_key != key:
+        warning(f'Name "{key}" is already used, storing this object as "{unique_key}"')
+    mapping[unique_key] = value
+    return unique_key
 
 
 def with_suffix(path: str, suffix: str, replace: bool = False) -> str:

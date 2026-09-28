@@ -3,7 +3,7 @@ from typing import Dict, Optional, Set, Tuple, cast
 
 from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
-from utils import trim_suffix
+from utils import insert_unique, trim_suffix
 from visual import (MeshData, MissingVisualError, VisualLoader,
                     load_indexed_visual, parse_decal_mesh,
                     parse_multi_resolution_mesh, parse_visual_data,
@@ -497,11 +497,15 @@ def parse_waynet(
         vob_position = get_blender_obj_position(position, scale)
         vob_name = waypoint.name.lower()
 
-        vobs[vob_name] = BlenderObjectData(
-            name=vob_name,
-            mesh=wp_mesh,
-            position=vob_position,
-            rotation=vob_rotation,
+        insert_unique(
+            vobs,
+            vob_name,
+            BlenderObjectData(
+                name=vob_name,
+                mesh=wp_mesh,
+                position=vob_position,
+                rotation=vob_rotation,
+            ),
         )
 
     return vobs
