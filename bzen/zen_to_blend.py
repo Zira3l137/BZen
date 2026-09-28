@@ -1,13 +1,30 @@
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 from time import perf_counter
+
+
+def venv_site_packages(project_dir: Path) -> List[Path]:
+    """
+    Return the site-packages directories of a "venv" or ".venv" virtual
+    environment in ``project_dir``, for both the Windows layout
+    (Lib/site-packages) and the Linux/macOS layout
+    (lib/pythonX.Y/site-packages). Only existing directories are returned.
+    """
+    found = []
+    for venv_name in ("venv", ".venv"):
+        venv_dir = project_dir / venv_name
+        candidates = [venv_dir / "Lib" / "site-packages", *sorted(venv_dir.glob("lib/python*/site-packages"))]
+        found.extend(path for path in candidates if path.is_dir())
+    return found
+
 
 script_dir = Path(__file__).parent
 if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir))
-    sys.path.append(str(script_dir.parent / "venv" / "Lib" / "site-packages"))
-    sys.path.append(str(script_dir.parent / ".venv" / "Lib" / "site-packages"))
+    # Blender runs this script with its own Python; let it find packages
+    # (ZenKit) installed into a virtual environment in the project directory.
+    sys.path.extend(str(path) for path in venv_site_packages(script_dir.parent))
 
 from logging import error, exception, info
 
