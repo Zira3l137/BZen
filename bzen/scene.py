@@ -158,6 +158,10 @@ def create_obj_from_mesh(
     """
     mesh = bpy.data.meshes.new(unique_name)
     mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
+    # Blender <= 4.0 ignores custom split normals unless Auto Smooth is on.
+    # 4.1 removed the property and always uses custom normals when present.
+    if hasattr(mesh, "use_auto_smooth"):
+        mesh.use_auto_smooth = True
     mesh.normals_split_custom_set(mesh_data.normals)  # type: ignore
 
     if mesh_data.uvs:
