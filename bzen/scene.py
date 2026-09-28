@@ -194,6 +194,8 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
         color_socket, alpha_socket = texture_node.outputs["Color"], texture_node.outputs["Alpha"]
     else:
         color_socket, alpha_socket = _build_frame_selector(bmat.node_tree, images, material.texture_anim_fps)
+    if any(material.uv_scroll):
+        _add_uv_scroll(bmat.node_tree, material.uv_scroll)
 
     diffuse_node.inputs["Roughness"].default_value = 1.0  # type: ignore
     bmat.diffuse_color = material.color
@@ -273,6 +275,49 @@ def _time_node_group() -> bpy.types.NodeTree:
     return group
 
 
+def _time_seconds(node_tree: bpy.types.NodeTree):
+    """Seconds output of this tree's "BZen Time" group node, adding the node if needed."""
+    group = _time_node_group()
+    node = next((n for n in node_tree.nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree == group), None)
+    if node is None:
+        node = node_tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = group
+        node.location = (-1700, 300)
+    return node.outputs[0]
+
+
+def _add_uv_scroll(node_tree: bpy.types.NodeTree, uv_scroll) -> None:
+    """
+    Make every image node of the material scroll its UVs over time.
+
+    Gothic's LINEAR texture animation mapping moves the texture by
+    ``uv_scroll`` UV units per millisecond: the game samples at
+    uv + time_ms * direction (per OpenGothic). BZen stores V negated, so the
+    offset added here is (u, -v) * 1000 * seconds. Image textures repeat,
+    so the offset needs no wrapping.
+    """
+    nodes, links = node_tree.nodes, node_tree.links
+    speed_u, speed_v = uv_scroll
+
+    texture_coordinates = nodes.new("ShaderNodeTexCoord")
+    texture_coordinates.location = (-2100, -200)
+    offset = nodes.new("ShaderNodeVectorMath")
+    offset.operation = "SCALE"
+    offset.label = "UV scroll offset"
+    offset.location = (-1900, 0)
+    offset.inputs[0].default_value = (speed_u * 1000.0, -speed_v * 1000.0, 0.0)  # UV per second
+    links.new(_time_seconds(node_tree), _socket(offset.inputs, "Scale"))
+    scrolled = nodes.new("ShaderNodeVectorMath")
+    scrolled.operation = "ADD"
+    scrolled.location = (-1750, -200)
+    links.new(texture_coordinates.outputs["UV"], scrolled.inputs[0])
+    links.new(offset.outputs[0], scrolled.inputs[1])
+
+    for node in nodes:
+        if node.bl_idname == "ShaderNodeTexImage":
+            links.new(scrolled.outputs[0], node.inputs["Vector"])
+
+
 def _socket(sockets, identifier: str):
     """Look a node socket up by its identifier (names repeat on Mix nodes)."""
     return next(socket for socket in sockets if socket.identifier == identifier)
@@ -312,10 +357,7 @@ def _build_frame_selector(node_tree: bpy.types.NodeTree, images, fps: float):
     count = len(images)
     fps = fps if fps > 0 else float(count)
 
-    time = nodes.new("ShaderNodeGroup")
-    time.node_tree = _time_node_group()
-    time.location = (-1700, 300)
-    scaled = _math(nodes, links, "MULTIPLY", time.outputs[0], fps, (-1500, 300))
+    scaled = _math(nodes, links, "MULTIPLY", _time_seconds(node_tree), fps, (-1500, 300))
     floored = _math(nodes, links, "FLOOR", scaled, None, (-1350, 300))
     index = _math(nodes, links, "MODULO", floored, float(count), (-1200, 300))
 
