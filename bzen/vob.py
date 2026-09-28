@@ -1,5 +1,5 @@
-from logging import debug, error, info
-from typing import Dict, Optional, Set, Tuple, cast
+from logging import debug, error, info, warning
+from typing import Dict, List, Optional, Set, Tuple, cast
 
 from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
@@ -52,6 +52,9 @@ VOB_COLLECTION = "VOBs"
 WAYNET_COLLECTION = "Waynet"
 WAYPOINTS_COLLECTION = (WAYNET_COLLECTION, "Waypoints")
 """Collection path for waypoints."""
+
+WAYNET_EDGES_COLLECTION = (WAYNET_COLLECTION, "Waynet Edges")
+"""Collection path for the mesh that draws the connections between waypoints."""
 
 
 def vob_collection_path(vob: VirtualObject) -> Tuple[str, ...]:
@@ -517,6 +520,34 @@ def parse_waynet(
         )
 
     return vobs
+
+
+def parse_waynet_edges(world: World, scale: float = 0.01) -> Tuple[List[Vector], List[Tuple[int, int]]]:
+    """
+    Parse the connections between waypoints of the world's waynet.
+
+    Returns the waypoint positions (converted like the waypoints themselves,
+    see get_blender_obj_position) and the edges as index pairs into that
+    list, ready to be built into a mesh of loose edges.
+
+    Edges that reference a waypoint that doesn't exist, or connect a
+    waypoint to itself, are skipped and counted in a warning.
+    """
+    waynet = world.way_net
+    vertices = [get_blender_obj_position(point.position, scale) for point in waynet.points]
+    point_count = len(vertices)
+
+    edges, skipped = [], 0
+    for edge in waynet.edges:
+        a, b = edge.a, edge.b
+        if a == b or not (0 <= a < point_count and 0 <= b < point_count):
+            skipped += 1
+            continue
+        edges.append((a, b))
+
+    if skipped:
+        warning(f"Skipped {skipped} invalid waynet edge(s)")
+    return vertices, edges
 
 
 def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
