@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from logging import error, info, warning
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import bpy
 import numpy as np  # numpy is bundled with Blender
@@ -29,6 +29,23 @@ class BlenderObjectData:
     mesh: Optional[MeshData] = None
     position: Vector = field(default_factory=Vector)
     rotation: Quaternion = field(default_factory=Quaternion)
+
+
+MaterialKey = Tuple[str, Tuple[float, float, float, float], Optional[str]]
+
+_material_cache: Dict[MaterialKey, bpy.types.Material] = {}
+"""
+Blender materials created so far, keyed by everything that defines them
+(name, color, texture) rather than by name alone. Gothic meshes can use the
+same material name with different textures or colors; keying by name made
+all of them share whichever variant was created first. When a second variant
+is created, Blender gives it a unique name ("NAME.001").
+"""
+
+
+def _material_key(material: MaterialData) -> MaterialKey:
+    texture = material.texture.lower() if material.texture else None
+    return (material.name, tuple(material.color), texture)  # type: ignore[return-value]
 
 
 def create_texture(name: str, texture: Texture) -> bpy.types.Image:
@@ -68,9 +85,9 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
     """
     Create a Blender material for a VOB material definition.
 
-    Materials are cached in the Blender material registry to avoid
-    creating duplicate materials for VOBs that share the same
-    visual asset (e.g., multiple VOBs using the same texture).
+    Materials are cached in _material_cache, keyed by name, color and
+    texture, so meshes that use an identical material share one Blender
+    material, while same-named materials that differ get their own.
 
     The material is built using Blender's node system:
     ShaderNodeTexImage (texture) -> ShaderNodeInvert (alpha) +
@@ -80,9 +97,21 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
     If the material has no texture, a simple diffuse color material is
     created without the node graph.
     """
-    if existing_material := bpy.data.materials.get(material.name):
-        return existing_material
+    key = _material_key(material)
+    if (cached := _material_cache.get(key)) is not None:
+        try:
+            cached.name  # raises ReferenceError if the material was deleted since
+            return cached
+        except ReferenceError:
+            del _material_cache[key]
 
+    bmat = _build_material(material, visuals_cache)
+    _material_cache[key] = bmat
+    return bmat
+
+
+def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoader]) -> bpy.types.Material:
+    """Create a new Blender material for ``material``; see create_material."""
     if not material.texture:
         bmat = bpy.data.materials.new(name=material.name)
         bmat.diffuse_color = material.color
@@ -178,10 +207,7 @@ def create_obj_from_mesh(
         warning("Mesh has no materials")
     else:
         for material in mesh_data.materials:
-            mat = bpy.data.materials.get(material.name)
-            if not mat:
-                mat = create_material(material, visuals_cache)
-            mesh.materials.append(mat)
+            mesh.materials.append(create_material(material, visuals_cache))
         mesh.polygons.foreach_set("material_index", mesh_data.material_indices)
 
     mesh.update()
