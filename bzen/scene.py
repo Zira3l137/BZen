@@ -119,13 +119,18 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
         return bmat
 
     bmat = bpy.data.materials.new(name=material.name)
-    bmat.use_nodes = True
+    # Before Blender 5.0 a new material has no node tree until use_nodes is
+    # enabled. From 5.0 on materials always use nodes and use_nodes is
+    # deprecated (to be removed in 6.0), so only touch it when needed.
+    if bmat.node_tree is None:
+        bmat.use_nodes = True
     bmat.use_backface_culling = True
-    bmat.blend_method = "CLIP"
-    try:
-        bmat.shadow_method = "CLIP"  # type: ignore
-    except AttributeError:
-        pass
+    # Legacy EEVEE (< 4.2) settings for alpha-clipped textures. EEVEE Next
+    # (4.2+) ignores them and handles transparency through the node tree
+    # below; set them only while Blender still has them.
+    for attribute in ("blend_method", "shadow_method"):
+        if hasattr(bmat, attribute):
+            setattr(bmat, attribute, "CLIP")
 
     nodes = bmat.node_tree.nodes
     links = bmat.node_tree.links
