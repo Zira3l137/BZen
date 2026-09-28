@@ -2,7 +2,7 @@ from logging import debug, error, info, warning
 from typing import Dict, List, Optional, Set, Tuple, cast
 
 from mathutils import Quaternion, Vector
-from scene import BlenderObjectData
+from scene import BlenderObjectData, LightData
 from utils import insert_unique, trim_suffix
 from visual import (MeshData, MissingVisualError, VisualLoader,
                     load_indexed_visual, parse_decal_mesh,
@@ -128,6 +128,43 @@ def get_blender_obj_position(vector: Vec3f, scale: float = 0.01) -> Vector:
     return Vector((x * scale, z * scale, y * scale))
 
 
+def _srgb_to_linear(channel: float) -> float:
+    """Convert an sRGB channel (0-1) to scene-linear, as Blender expects for light colors."""
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def parse_light_data(vob: VirtualObject, scale: float = 0.01) -> LightData:
+    """
+    Read the light parameters of a light VOB (zCVobLight).
+
+    Like OpenGothic, the first entry of the color animation replaces the
+    color and the first range animation scale multiplies the range when
+    those animations are present (the animation itself is not recreated).
+    The color is converted from sRGB bytes to scene-linear RGB and the
+    range to Blender units.
+
+    A dynamic light that is switched off is marked as not enabled; static
+    lights are enabled regardless, matching OpenGothic.
+    """
+    color_animation = vob.color_animation
+    color = color_animation[0] if color_animation else vob.color
+    rgb = tuple(_srgb_to_linear(channel / 255.0) for channel in (color.r, color.g, color.b))
+
+    range_scales = vob.range_animation_scale
+    light_range = vob.range * (range_scales[0] if range_scales else 1.0) * scale
+
+    return LightData(color=rgb, range=light_range, enabled=bool(vob.is_static or vob.on))  # type: ignore[arg-type]
+
+
+def _try_parse_light_data(vob: VirtualObject, scale: float) -> Optional[LightData]:
+    """parse_light_data, but a light that can't be read must not cost the VOB its placeholder."""
+    try:
+        return parse_light_data(vob, scale)
+    except Exception as e:
+        warning(f'Could not read the light settings of VOB "{vob.name}", no Blender light for it: {e!r}')
+        return None
+
+
 def get_special_blender_obj_data(
     vob: VirtualObject,
     mesh_cache: Dict[str, MeshData],
@@ -183,6 +220,7 @@ def get_special_blender_obj_data(
         position=get_blender_obj_position(vob.position, scale),
         rotation=get_blender_obj_quaternion_rotation(vob.rotation),
         collection=vob_collection_path(vob),
+        light=_try_parse_light_data(vob, scale) if vob_type is VobType.zCVobLight else None,
     )
 
 
