@@ -63,12 +63,12 @@ def ensure_collection(path: Tuple[str, ...]) -> bpy.types.Collection:
     return collection
 
 
-MaterialKey = Tuple[str, Tuple[float, float, float, float], Optional[str]]
+MaterialKey = Tuple[str, Tuple[float, float, float, float], Optional[str], float, Tuple[float, float]]
 
 _material_cache: Dict[MaterialKey, bpy.types.Material] = {}
 """
 Blender materials created so far, keyed by everything that defines them
-(name, color, texture) rather than by name alone. Gothic meshes can use the
+(name, color, texture, texture animation) rather than by name alone. Gothic meshes can use the
 same material name with different textures or colors; keying by name made
 all of them share whichever variant was created first. When a second variant
 is created, Blender gives it a unique name ("NAME.001").
@@ -77,7 +77,13 @@ is created, Blender gives it a unique name ("NAME.001").
 
 def _material_key(material: MaterialData) -> MaterialKey:
     texture = material.texture.lower() if material.texture else None
-    return (material.name, tuple(material.color), texture)  # type: ignore[return-value]
+    return (
+        material.name,
+        tuple(material.color),  # type: ignore[arg-type]
+        texture,
+        material.texture_anim_fps,
+        tuple(material.uv_scroll),  # type: ignore[arg-type]
+    )
 
 
 def create_texture(name: str, texture: Texture) -> bpy.types.Image:

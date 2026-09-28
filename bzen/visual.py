@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple, TypeAlias
 from mathutils import Matrix, Vector
 from utils import canonical_case_path, suffix, trim_suffix, with_suffix
 from zenkit import (
+    AnimationMapping,
     Model,
     ModelHierarchy,
     ModelMesh,
@@ -160,13 +161,19 @@ class MaterialData:
     0-1), and an optional texture name. Materials are used to create
     Blender materials when mesh objects are created.
 
-    Materials with the same name, color and texture are considered
-    identical; scene.create_material shares one Blender material between
-    them.
+    Materials with the same name, color, texture and texture animation
+    are considered identical; scene.create_material shares one Blender
+    material between them.
     """
     name: str
     color: Tuple[float, float, float, float]
     texture: Optional[str] = field(default=None)
+    # Frame rate of a frame-sequence texture animation (texture names with
+    # "_A0", see animated_texture_frames); 0 means the game's default.
+    texture_anim_fps: float = field(default=0.0)
+    # UV scrolling speed in UV units per millisecond, in Gothic's UV space;
+    # (0, 0) when the material does not scroll.
+    uv_scroll: Tuple[float, float] = field(default=(0.0, 0.0))
 
     def __hash__(self):
         return hash(self.name) + hash(self.color) + hash(self.texture)
@@ -236,6 +243,49 @@ def load_indexed_visual(cache: Dict[str, VisualLoader], name: str) -> Optional[V
     if loader is None:
         raise MissingVisualError(name)
     return loader()
+
+
+def material_data_from_zenkit(mat) -> MaterialData:
+    """
+    Convert a ZenKit material (of the level mesh or of an MRM) to MaterialData.
+
+    The color is converted from 0-255 to 0-1 RGBA. Texture animation
+    settings are carried over: the frame rate for frame-sequence textures
+    and, for materials with LINEAR animation mapping, the UV scrolling
+    direction.
+    """
+    mat_color = mat.color
+    inv255 = 1.0 / 255.0
+    color = (mat_color.r * inv255, mat_color.g * inv255, mat_color.b * inv255, mat_color.a * inv255)
+
+    uv_scroll = (0.0, 0.0)
+    if mat.texture_animation_mapping == AnimationMapping.LINEAR:
+        direction = mat.texture_animation_mapping_direction
+        uv_scroll = (direction.x, direction.y)
+
+    return MaterialData(mat.name, color, mat.texture, mat.texture_animation_fps, uv_scroll)
+
+
+def animated_texture_frames(texture: str, visuals_cache: Dict[str, VisualLoader]) -> List[str]:
+    """
+    Return the (lowercased) texture names making up an animated texture.
+
+    Gothic animates a texture whose name contains "_A0" by cycling through
+    "_A1", "_A2", ... for as long as those textures exist; every "_A0" in
+    the name is replaced by the frame's number. This follows OpenGothic
+    (Resources::loadTextureAnim).
+
+    Returns just the texture itself for a non-animated texture, and an
+    empty list if even the first frame is not in the visuals cache.
+    """
+    name = texture.lower()
+    if "_a0" not in name:
+        return [name] if name in visuals_cache else []
+
+    frames: List[str] = []
+    while (frame := name.replace("_a0", f"_a{len(frames)}")) in visuals_cache:
+        frames.append(frame)
+    return frames
 
 
 def _make_loader(path: str | Path | VfsNode, extension: VisualExtension) -> VisualLoader:
@@ -465,16 +515,7 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     extend_normals, extend_uvs = normals.extend, uvs.extend
 
     for mat in mesh.materials:
-        mat_color = mat.color
-        r, g, b, a = mat_color.r, mat_color.g, mat_color.b, mat_color.a
-        inv255 = 1.0 / 255.0
-        color = (
-            r * inv255,
-            g * inv255,
-            b * inv255,
-            a * inv255,
-        )
-        append_material(MaterialData(mat.name, color, mat.texture))
+        append_material(material_data_from_zenkit(mat))
 
     vertex_cache, normal_cache, position_cache, seen_leaf_indices = {}, {}, {}, set()
     positions, features, polygons, leaf_polygon_indices = (
@@ -570,16 +611,7 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
     extend_normals, extend_uvs = normals.extend, uvs.extend
 
     for mat in mrm.material:
-        mat_color = mat.color
-        r, g, b, a = mat_color.r, mat_color.g, mat_color.b, mat_color.a
-        inv255 = 1.0 / 255.0
-        color = (
-            r * inv255,
-            g * inv255,
-            b * inv255,
-            a * inv255,
-        )
-        materials.append(MaterialData(mat.name, color, mat.texture))
+        materials.append(material_data_from_zenkit(mat))
 
     positions, vertex_cache = [Vector((pos.x, pos.y, pos.z)) for pos in mrm.positions], {}
     for submesh_index, submesh in enumerate(mrm.submeshes):
@@ -632,7 +664,9 @@ def parse_decal_mesh(vob: VirtualObject, scale: float = 0.01) -> Optional[MeshDa
     """
     visual_name = vob.visual.name.lower()
     visual: VisualDecal = vob.visual  # type: ignore
-    material = MaterialData(trim_suffix(visual_name), (1.0, 1.0, 1.0, 1.0), visual_name)
+    material = MaterialData(
+        trim_suffix(visual_name), (1.0, 1.0, 1.0, 1.0), visual_name, texture_anim_fps=visual.texture_anim_fps
+    )
     dimension_x, dimension_y = (
         visual.dimension.x * scale,
         visual.dimension.y * scale,
