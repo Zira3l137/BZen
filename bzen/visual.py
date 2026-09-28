@@ -762,7 +762,6 @@ def parse_model_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -
         faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)  # type: ignore
         material_indices.extend(idx + material_offset for idx in mesh.material_indices)
         materials.extend(mesh.materials)
-        vertices.extend(mesh.vertices)
         normals.extend(mesh.normals)
         uvs.extend(mesh.uvs)
 
