@@ -427,6 +427,11 @@ def parse_blender_obj_data_from_world(
                 error(f'Missing asset "{e.name}": skipping VOB "{vob.name}" and every other VOB that needs it')
             else:
                 debug(f'Skipping VOB "{vob.name}": missing asset "{e.name}"')
+        except Exception as e:
+            # Anything else (e.g. a corrupt file ZenKit cannot read) should cost
+            # this one VOB, not the whole conversion. Traceback at -v 3.
+            error(f'Unexpected error while indexing VOB "{vob.name}", skipping it: {e!r}')
+            debug("Traceback:", exc_info=True)
 
         # Traverse children
         if vob.children:
