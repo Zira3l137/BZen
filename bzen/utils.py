@@ -64,8 +64,11 @@ def suffix(path: str, dot: bool = False) -> str:
 
     Returns an empty string if the path has no extension.
     """
+    file_name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if "." not in file_name:
+        return ""
     prefix = "." if dot else ""
-    return f"{prefix}{path.rsplit('.', 1)[-1]}"
+    return f"{prefix}{file_name.rsplit('.', 1)[-1]}"
 
 
 def trim_suffix(path: str) -> str:
