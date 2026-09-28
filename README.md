@@ -10,6 +10,7 @@ BZen is a command-line tool for converting 3D world files (`.zen`) from Gothic a
 
 - **Full World Conversion:** Converts the entire static world mesh from a `.zen` file.
 - **VOB Support:** Parses and places a wide variety of Virtual Objects (VOBs), including items, lights, sounds, interactive objects, decals, trigger zones, fog zones, music zones, waypoints, and more. Invisible VOBs (triggers, lights, sounds, etc.) are represented with placeholder meshes so they remain visible and selectable in Blender.
+- **Organized Scene:** VOBs are grouped into a `VOBs` collection with one child collection per VOB type (`oCItem`, `zCVobLight`, `oCMobContainer`, ...), so whole categories can be hidden, selected or excluded at once. Waypoints go into `Waynet/Waypoints`.
 - **Waynet Parsing:** Optionally parses and visualizes the waynet, showing waypoints used by NPCs.
 - **Material & Texture Loading:** Automatically creates materials and loads textures from loose files and `.vdf` archives.
 - **Efficient Instancing:** Reuses mesh data for identical objects to keep `.blend` files small and performant.

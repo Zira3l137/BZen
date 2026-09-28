@@ -46,6 +46,18 @@ The mesh name is used to look up the mesh data in the mesh_cache in
 parse_blender_obj_data_from_world.
 """
 
+VOB_COLLECTION = "VOBs"
+"""Top-level collection holding one child collection per VOB type."""
+
+WAYNET_COLLECTION = "Waynet"
+WAYPOINTS_COLLECTION = (WAYNET_COLLECTION, "Waypoints")
+"""Collection path for waypoints."""
+
+
+def vob_collection_path(vob: VirtualObject) -> Tuple[str, ...]:
+    """Collection path for a VOB: ("VOBs", "<VOB type name>"), e.g. ("VOBs", "zCVobLight")."""
+    return (VOB_COLLECTION, vob.type.name)
+
 
 class ParseMeshError(Exception):
     """
@@ -167,6 +179,7 @@ def get_special_blender_obj_data(
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
         rotation=get_blender_obj_quaternion_rotation(vob.rotation),
+        collection=vob_collection_path(vob),
     )
 
 
@@ -213,6 +226,7 @@ def get_decal_blender_obj_data(
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
         rotation=get_blender_obj_quaternion_rotation(vob.rotation),
+        collection=vob_collection_path(vob),
     )
 
 
@@ -272,6 +286,7 @@ def get_item_blender_obj_data(
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
         rotation=get_blender_obj_quaternion_rotation(vob.rotation),
+        collection=vob_collection_path(vob),
     )
 
 
@@ -325,6 +340,7 @@ def get_generic_blender_obj_data(
         mesh=mesh_data,
         position=get_blender_obj_position(vob.position, scale),
         rotation=get_blender_obj_quaternion_rotation(vob.rotation),
+        collection=vob_collection_path(vob),
     )
 
 
@@ -496,6 +512,7 @@ def parse_waynet(
                 mesh=wp_mesh,
                 position=vob_position,
                 rotation=vob_rotation,
+                collection=WAYPOINTS_COLLECTION,
             ),
         )
 
