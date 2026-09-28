@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 import bpy
 import numpy as np  # numpy is bundled with Blender
 from mathutils import Quaternion, Vector
-from visual import MaterialData, MeshData, VisualLoader
+from visual import MaterialData, MeshData, VisualLoader, animated_texture_frames
 from zenkit import Texture
 
 
@@ -174,35 +174,32 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
     links = bmat.node_tree.links
     nodes.clear()
 
-    texture_node = nodes.new("ShaderNodeTexImage")
     invert_node = nodes.new("ShaderNodeInvert")
     diffuse_node = nodes.new("ShaderNodeBsdfDiffuse")
     mix_shader = nodes.new("ShaderNodeMixShader")
     output_node = nodes.new("ShaderNodeOutputMaterial")
 
-    texture_node.location = (-800, 0)
     invert_node.location = (-600, -100)
     diffuse_node.location = (-400, 0)
     mix_shader.location = (-200, 0)
     output_node.location = (200, 0)
 
-    texture_name = material.texture.lower()
-    texture_obj = visuals_cache.get(texture_name)  # type: ignore
-    image = None
-    if texture_obj:
-        try:
-            image = bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj())  # type: ignore
-        except Exception as e:
-            # A texture that can't be read shouldn't abort the conversion; the
-            # material is still created, just without an image.
-            warning(f'Could not load texture "{texture_name}" for material "{material.name}": {e!r}')
-    texture_node.image = image  # type: ignore
+    # A missing texture still gets an (empty) image node, as before.
+    frames = animated_texture_frames(material.texture, visuals_cache) or [material.texture.lower()]
+    images = [_load_texture_image(frame, material, visuals_cache) for frame in frames]
+    if len(images) == 1:
+        texture_node = nodes.new("ShaderNodeTexImage")
+        texture_node.location = (-800, 0)
+        texture_node.image = images[0]  # type: ignore
+        color_socket, alpha_socket = texture_node.outputs["Color"], texture_node.outputs["Alpha"]
+    else:
+        color_socket, alpha_socket = _build_frame_selector(bmat.node_tree, images, material.texture_anim_fps)
 
     diffuse_node.inputs["Roughness"].default_value = 1.0  # type: ignore
     bmat.diffuse_color = material.color
 
-    links.new(texture_node.outputs["Color"], diffuse_node.inputs["Color"])
-    links.new(texture_node.outputs["Alpha"], invert_node.inputs["Color"])
+    links.new(color_socket, diffuse_node.inputs["Color"])
+    links.new(alpha_socket, invert_node.inputs["Color"])
     links.new(invert_node.outputs["Color"], mix_shader.inputs["Fac"])
     links.new(diffuse_node.outputs["BSDF"], mix_shader.inputs[2])
     links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
@@ -213,6 +210,142 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
     links.new(transparent_shader.outputs["BSDF"], mix_shader.inputs[1])
 
     return bmat
+
+
+def _load_texture_image(
+    texture_name: str, material: MaterialData, visuals_cache: Dict[str, VisualLoader]
+) -> Optional[bpy.types.Image]:
+    """
+    Return the Blender image for ``texture_name``, creating it on first use.
+    Returns None if the texture is not in the game data or cannot be read.
+    """
+    texture_obj = visuals_cache.get(texture_name)
+    if not texture_obj:
+        return None
+    try:
+        return bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj())  # type: ignore
+    except Exception as e:
+        # A texture that can't be read shouldn't abort the conversion; the
+        # material is still created, just without an image.
+        warning(f'Could not load texture "{texture_name}" for material "{material.name}": {e!r}')
+        return None
+
+
+TIME_GROUP_KEY = "bzen_time"
+"""Custom property marking the shared node group that outputs scene time."""
+
+
+def _time_node_group() -> bpy.types.NodeTree:
+    """
+    Return the shared "BZen Time" shader node group, creating it on first use.
+
+    Its single output, Seconds, is the current scene time in seconds,
+    computed by a driver from the frame number and the scene's frame rate
+    (frame * fps_base / fps). Every animated material uses this one group,
+    so the whole file has a single driver, and changing the scene frame
+    rate keeps texture animations at their in-game speed. The expression
+    is a "simple expression", which Blender evaluates without Python, so
+    it works even when auto-running scripts is disabled.
+    """
+    for group in bpy.data.node_groups:
+        if group.get(TIME_GROUP_KEY):
+            return group
+
+    group = bpy.data.node_groups.new("BZen Time", "ShaderNodeTree")
+    group[TIME_GROUP_KEY] = True
+    group.interface.new_socket(name="Seconds", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    output = group.nodes.new("NodeGroupOutput")
+    value = group.nodes.new("ShaderNodeValue")
+    value.label = "Scene time (s)"
+    value.location, output.location = (-200, 0), (0, 0)
+    group.links.new(value.outputs[0], output.inputs[0])
+
+    driver = value.outputs[0].driver_add("default_value").driver
+    driver.type = "SCRIPTED"
+    for name, data_path in (("fps", "render.fps"), ("fps_base", "render.fps_base")):
+        variable = driver.variables.new()
+        variable.name = name
+        variable.type = "SINGLE_PROP"
+        variable.targets[0].id_type = "SCENE"
+        variable.targets[0].id = bpy.context.scene
+        variable.targets[0].data_path = data_path
+    driver.expression = "frame * fps_base / fps"
+    return group
+
+
+def _socket(sockets, identifier: str):
+    """Look a node socket up by its identifier (names repeat on Mix nodes)."""
+    return next(socket for socket in sockets if socket.identifier == identifier)
+
+
+def _math(nodes, links, operation: str, a, b=None, location=(0, 0)):
+    """Add a Math node computing ``operation`` of a and b (sockets or numbers)."""
+    node = nodes.new("ShaderNodeMath")
+    node.operation = operation
+    node.location = location
+    for index, value in enumerate((a, b)):
+        if value is None:
+            continue
+        if isinstance(value, (int, float)):
+            node.inputs[index].default_value = value
+        else:
+            links.new(value, node.inputs[index])
+    return node.outputs[0]
+
+
+def _build_frame_selector(node_tree: bpy.types.NodeTree, images, fps: float):
+    """
+    Build the nodes that show one of ``images`` depending on the scene time.
+
+    Frame index = floor(seconds * fps) mod frame count, as in the game:
+    frames switch without blending. When the material's fps is 0, the game
+    plays one full cycle per second, i.e. uses the frame count as fps.
+
+    Each frame is its own packed image node (Blender cannot pack image
+    sequences). Starting from frame 0, a chain of Mix nodes swaps in frame
+    i once the index reaches i, separately for color and alpha.
+
+    Returns the (color, alpha) output sockets to use instead of a single
+    image node's outputs.
+    """
+    nodes, links = node_tree.nodes, node_tree.links
+    count = len(images)
+    fps = fps if fps > 0 else float(count)
+
+    time = nodes.new("ShaderNodeGroup")
+    time.node_tree = _time_node_group()
+    time.location = (-1700, 300)
+    scaled = _math(nodes, links, "MULTIPLY", time.outputs[0], fps, (-1500, 300))
+    floored = _math(nodes, links, "FLOOR", scaled, None, (-1350, 300))
+    index = _math(nodes, links, "MODULO", floored, float(count), (-1200, 300))
+
+    color = alpha = None
+    for i, image in enumerate(images):
+        texture_node = nodes.new("ShaderNodeTexImage")
+        texture_node.image = image
+        texture_node.label = f"Frame {i}"
+        texture_node.location = (-1500, -300 * i)
+        if i == 0:
+            color, alpha = texture_node.outputs["Color"], texture_node.outputs["Alpha"]
+            continue
+
+        use_frame = _math(nodes, links, "GREATER_THAN", index, i - 0.5, (-1200, -300 * i))
+        for data_type, value_id, result_id, frame_output in (
+            ("RGBA", "Color", "Result_Color", texture_node.outputs["Color"]),
+            ("FLOAT", "Float", "Result_Float", texture_node.outputs["Alpha"]),
+        ):
+            mix = nodes.new("ShaderNodeMix")
+            mix.data_type = data_type
+            mix.location = (-1000 + 150 * (data_type == "FLOAT"), -300 * i)
+            links.new(use_frame, _socket(mix.inputs, "Factor_Float"))
+            links.new(color if data_type == "RGBA" else alpha, _socket(mix.inputs, f"A_{value_id}"))
+            links.new(frame_output, _socket(mix.inputs, f"B_{value_id}"))
+            if data_type == "RGBA":
+                color = _socket(mix.outputs, result_id)
+            else:
+                alpha = _socket(mix.outputs, result_id)
+
+    return color, alpha
 
 
 def create_obj_from_mesh(
