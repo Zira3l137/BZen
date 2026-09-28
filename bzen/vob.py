@@ -410,6 +410,11 @@ def parse_blender_obj_data_from_world(
                 bobj_name, bobj_data = get_item_blender_obj_data(vob, vm, mesh_cache, visuals_cache, scale)
                 blender_objects[bobj_name] = bobj_data
 
+            # VOBs without any visual (plain zCVob used as a parent, marker,
+            # etc.): nothing to draw. Routine, so only reported at debug level.
+            elif vob_visual is None or not vob_visual.name:
+                debug(f'VOB "{vob.name}" has no visual, skipping it')
+
             # Generic VOBs with standard visuals
             else:
                 bobj_name, bobj_data = get_generic_blender_obj_data(vob, mesh_cache, visuals_cache, scale)
