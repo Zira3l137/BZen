@@ -297,10 +297,14 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
     Indexed visuals are added to the `visuals` dictionary (passed by
     reference). Existing entries with the same name are not overwritten.
     """
-    paths = [
-        canonical_case_path(game_directory / "_work" / "data" / category / "_compiled")
-        for category in VISUAL_CATEGORIES
-    ]
+    paths = []
+    for category in VISUAL_CATEGORIES:
+        try:
+            paths.append(canonical_case_path(game_directory / "_work" / "data" / category / "_compiled"))
+        except FileNotFoundError:
+            # Common on installs without loose compiled files; the archives
+            # indexed afterwards still provide the game's assets.
+            info(f'No "_work/data/{category}/_compiled" directory, skipping it')
 
     stack = [entry for path in paths for entry in scandir(path)]
     while stack:
