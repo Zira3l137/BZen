@@ -194,6 +194,11 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
         color_socket, alpha_socket = texture_node.outputs["Color"], texture_node.outputs["Alpha"]
     else:
         color_socket, alpha_socket = _build_frame_selector(bmat.node_tree, images, material.texture_anim_fps)
+        # Each frame is a separate texture in the shader; EEVEE on some GPUs
+        # cannot compile materials using more than ~8-16 textures, so report
+        # frame counts to make heavy animations easy to find.
+        fps = material.texture_anim_fps if material.texture_anim_fps > 0 else float(len(images))
+        info(f'Animated texture "{material.texture}" in material "{material.name}": {len(images)} frames at {fps:g} fps')
     if any(material.uv_scroll):
         _add_uv_scroll(bmat.node_tree, material.uv_scroll)
 
