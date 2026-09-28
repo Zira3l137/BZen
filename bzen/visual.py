@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 from logging import error, info
 from os import scandir
 from pathlib import Path
@@ -40,8 +40,17 @@ VobVisual: TypeAlias = MultiResolutionMesh | ModelMesh | Model | MorphMesh | Mod
 VisualLoader: TypeAlias = Callable[[], Optional[VobVisual]]
 
 
-class VisualExtension(StrEnum):
-    """Enum of supported visual file extensions."""
+class VisualExtension(str, Enum):
+    """Enum of supported visual file extensions.
+
+    Deliberately ``(str, Enum)`` rather than ``enum.StrEnum``: StrEnum needs
+    Python 3.11, but Blender 4.0 bundles Python 3.10. ``__str__`` is
+    overridden so that str() and f-strings yield the bare value ("mrm") on
+    every Python version, exactly like StrEnum did; with_suffix() relies on it.
+    """
+
+    def __str__(self) -> str:
+        return str(self.value)
     MRM = "mrm"
     MDL = "mdl"
     MDM = "mdm"
