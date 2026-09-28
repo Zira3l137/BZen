@@ -115,9 +115,14 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
 
     texture_name = material.texture.lower()
     texture_obj = visuals_cache.get(texture_name)  # type: ignore
-    image = (
-        (bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj())) if texture_obj else None  # type: ignore
-    )
+    image = None
+    if texture_obj:
+        try:
+            image = bpy.data.images.get(texture_name) or create_texture(texture_name, texture_obj())  # type: ignore
+        except Exception as e:
+            # A texture that can't be read shouldn't abort the conversion; the
+            # material is still created, just without an image.
+            warning(f'Could not load texture "{texture_name}" for material "{material.name}": {e!r}')
     texture_node.image = image  # type: ignore
 
     diffuse_node.inputs["Roughness"].default_value = 1.0  # type: ignore
