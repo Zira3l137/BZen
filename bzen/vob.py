@@ -313,6 +313,9 @@ def get_generic_blender_obj_data(
 
     Returns a tuple of (blender_obj_name, BlenderObjectData).
     """
+    if vob.visual is None:
+        raise ParseMeshError(f'VOB "{vob.name}" has no visual')
+
     vob_visual_name = vob.visual.name
     blender_obj_name = f"{trim_suffix(vob_visual_name).lower()}_{vob.id}"
     mesh_data = None
@@ -381,7 +384,8 @@ def parse_blender_obj_data_from_world(
     while stack:
         vob = stack.pop()
         vob_type = vob.type
-        vob_visual_type = vob.visual.type
+        vob_visual = vob.visual  # ZenKit returns None for VOBs without a visual
+        vob_visual_type = vob_visual.type if vob_visual is not None else None
 
         try:
             # Skip level mesh
