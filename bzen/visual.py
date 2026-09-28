@@ -760,12 +760,17 @@ def parse_mesh_attachments(
         world_matrix = world_matrix @ BASE_ROTATION_MATRIX @ BASE_SCALE_MATRIX
 
         vertices_relative_to_parent = [world_matrix @ vertex for vertex in mesh.vertices]
+        # Normals must be rotated along with the vertices. The inverse
+        # transpose of the linear part keeps them perpendicular to their
+        # faces even if a node transform is not a pure rotation.
+        normal_matrix = world_matrix.to_3x3().inverted_safe().transposed()
+        rotated_normals = [(normal_matrix @ normal).normalized() for normal in mesh.normals]
 
         faces.extend(tuple(idx + vertex_offset for idx in face) for face in mesh.faces)
         material_indices.extend(idx + material_offset for idx in mesh.material_indices)
         materials.extend(mesh.materials)
         vertices.extend(vertices_relative_to_parent)
-        normals.extend(mesh.normals)
+        normals.extend(rotated_normals)
         uvs.extend(mesh.uvs)
 
         vertex_offset += len(mesh.vertices)
