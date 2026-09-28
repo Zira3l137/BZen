@@ -468,14 +468,18 @@ def parse_waynet(
     objects. Each BlenderObjectData has the waypoint's position and
     rotation, with the invisible waypoint mesh.
 
-    Raises KeyError if the "invisible_zcvobwaypoint.mrm" file does not
-    exist in the visuals cache.
+    If the "invisible_zcvobwaypoint.mrm" placeholder mesh is not in the
+    visuals cache, an error is logged and an empty dictionary is returned.
     """
     vobs = {}
     waynet = world.way_net
     waypoints = waynet.points
 
-    wp_mrm = cast(MultiResolutionMesh, visuals_cache["invisible_zcvobwaypoint.mrm"]())
+    try:
+        wp_mrm = cast(MultiResolutionMesh, load_indexed_visual(visuals_cache, "invisible_zcvobwaypoint.mrm"))
+    except MissingVisualError as e:
+        error(f"Cannot place waypoints, skipping the waynet: {e}")
+        return vobs
     wp_mesh = parse_multi_resolution_mesh(wp_mrm, scale)
 
     for waypoint in waypoints:
