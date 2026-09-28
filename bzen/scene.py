@@ -20,6 +20,9 @@ The mesh data is computed during VOB parsing; position and
 rotation are also computed at parse time so that the create_*
 functions can construct Blender objects without additional
 transform math.
+
+``collection`` is the path of nested collections the object is put in,
+e.g. ("VOBs", "zCVobLight"); an empty path means the context collection.
 """
 
 
@@ -29,6 +32,35 @@ class BlenderObjectData:
     mesh: Optional[MeshData] = None
     position: Vector = field(default_factory=Vector)
     rotation: Quaternion = field(default_factory=Quaternion)
+    collection: Tuple[str, ...] = ()
+
+
+COLLECTION_KEY = "bzen_collection"
+"""
+Custom property that stores the name BZen asked for on every collection it
+creates. Blender renames a new collection ("VOBs.001") when another
+datablock already has the name, so lookups go by this property instead of
+by the (possibly renamed) collection name.
+"""
+
+
+def ensure_collection(path: Tuple[str, ...]) -> bpy.types.Collection:
+    """
+    Return the collection at ``path`` below the scene's root collection,
+    creating any missing collection along the way.
+
+    ``path`` is a tuple of names, e.g. ("VOBs", "zCVobLight"). An empty
+    path returns the scene's root collection.
+    """
+    collection = bpy.context.scene.collection
+    for name in path:
+        child = next((c for c in collection.children if c.get(COLLECTION_KEY) == name), None)
+        if child is None:
+            child = bpy.data.collections.new(name)
+            child[COLLECTION_KEY] = name
+            collection.children.link(child)
+        collection = child
+    return collection
 
 
 MaterialKey = Tuple[str, Tuple[float, float, float, float], Optional[str]]
@@ -178,7 +210,10 @@ def _build_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
 
 
 def create_obj_from_mesh(
-    unique_name: str, mesh_data: MeshData, visuals_cache: Dict[str, VisualLoader]
+    unique_name: str,
+    mesh_data: MeshData,
+    visuals_cache: Dict[str, VisualLoader],
+    collection: Optional[bpy.types.Collection] = None,
 ) -> bpy.types.Object:
     """
     Create a Blender object from a MeshData dataclass.
@@ -191,8 +226,8 @@ def create_obj_from_mesh(
     materials by create_material, which reuses identical ones and loads
     textures through the visuals_cache (name -> loader).
 
-    The object is linked to the context collection of the active Blender
-    scene.
+    The object is linked to ``collection``, or to the context collection of
+    the active Blender scene if none is given.
     """
     mesh = bpy.data.meshes.new(unique_name)
     mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
@@ -218,13 +253,16 @@ def create_obj_from_mesh(
 
     obj = bpy.data.objects.new(unique_name, mesh)
     obj.rotation_mode = "QUATERNION"
-    bpy.context.collection.objects.link(obj)
+    (collection or bpy.context.collection).objects.link(obj)
 
     return obj
 
 
 def create_obj_from_vob_data(
-    unique_name: str, vob_data: BlenderObjectData, visuals_cache: Dict[str, VisualLoader]
+    unique_name: str,
+    vob_data: BlenderObjectData,
+    visuals_cache: Dict[str, VisualLoader],
+    collection: Optional[bpy.types.Collection] = None,
 ) -> Optional[bpy.types.Object]:
     """
     Create a Blender object from BlenderObjectData.
@@ -241,7 +279,7 @@ def create_obj_from_vob_data(
         error(f"VOB {unique_name} has no mesh, skipping")
         return None
 
-    obj = create_obj_from_mesh(unique_name, vob_mesh, visuals_cache)
+    obj = create_obj_from_mesh(unique_name, vob_mesh, visuals_cache, collection)
     obj.location = vob_data.position or Vector((0, 0, 0))
     obj.rotation_quaternion = vob_data.rotation or Quaternion()
 
@@ -249,7 +287,10 @@ def create_obj_from_vob_data(
 
 
 def create_instance_from_vob_data(
-    unique_name: str, obj: bpy.types.Object, vob_data: BlenderObjectData
+    unique_name: str,
+    obj: bpy.types.Object,
+    vob_data: BlenderObjectData,
+    collection: Optional[bpy.types.Collection] = None,
 ) -> bpy.types.Object:
     """
     Create a Blender object instance from an existing Blender object.
@@ -259,14 +300,15 @@ def create_instance_from_vob_data(
     rotation. Used to instance VOBs that share the same mesh, avoiding
     the creation of duplicate mesh objects.
 
-    The cloned object is linked to the context collection.
+    The new object is linked to ``collection``, or to the context
+    collection if none is given.
     """
     instance = bpy.data.objects.new(unique_name, obj.data)
     instance.rotation_mode = "QUATERNION"
     instance.location = vob_data.position or Vector((0, 0, 0))
     instance.rotation_quaternion = vob_data.rotation or Quaternion()
 
-    bpy.context.collection.objects.link(instance)
+    (collection or bpy.context.collection).objects.link(instance)
     return instance
 
 
@@ -283,7 +325,11 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
     (the Python object id of the mesh data, not the mesh content). If
     a VOB's mesh has already been seen, a new object instance is created
     for that VOB using the existing mesh object. Otherwise, the mesh
-    is created fresh and the object is linked to the context collection.
+    is created fresh.
+
+    Each object is linked to the collection given by its
+    BlenderObjectData.collection path (see ensure_collection); objects
+    with an empty path go to the context collection.
 
     After processing, the Blender view layer is updated to reflect the
     new objects.
@@ -292,17 +338,23 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
     """
     success_count = 0
     obj_cache: Dict[int, bpy.types.Object] = {}  # keyed by id(mesh), not mesh content
+    collections: Dict[Tuple[str, ...], bpy.types.Collection] = {}
 
     for vob_name, vob_data in vobs.items():
         vob_mesh = vob_data.mesh
         mesh_key = id(vob_mesh)
         result = None
 
+        path = vob_data.collection
+        if path not in collections:
+            collections[path] = ensure_collection(path) if path else bpy.context.collection
+        collection = collections[path]
+
         if mesh_key in obj_cache:
             existing_obj = obj_cache[mesh_key]
-            result = create_instance_from_vob_data(vob_name, existing_obj, vob_data)
+            result = create_instance_from_vob_data(vob_name, existing_obj, vob_data, collection)
         else:
-            result = create_obj_from_vob_data(vob_name, vob_data, visuals_cache)
+            result = create_obj_from_vob_data(vob_name, vob_data, visuals_cache, collection)
             if not result:
                 warning(f"VOB {vob_name} has no mesh, skipping")
                 continue
