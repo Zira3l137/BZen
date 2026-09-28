@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from logging import error, info, warning
 from typing import Dict, List, Optional, Tuple
 
+import math
+
 import bpy
 import numpy as np  # numpy is bundled with Blender
 from mathutils import Quaternion, Vector
@@ -23,7 +25,22 @@ transform math.
 
 ``collection`` is the path of nested collections the object is put in,
 e.g. ("VOBs", "zCVobLight"); an empty path means the context collection.
+``light`` is set for light VOBs and used when lights are created.
 """
+
+
+@dataclass(frozen=True, slots=True)
+class LightData:
+    """
+    Light parameters of a light VOB, already converted for Blender.
+
+    color is scene-linear RGB (0-1), range is in Blender units. A light that
+    is not enabled is still created, but hidden (see create_light_object).
+    """
+
+    color: Tuple[float, float, float]
+    range: float
+    enabled: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +50,7 @@ class BlenderObjectData:
     position: Vector = field(default_factory=Vector)
     rotation: Quaternion = field(default_factory=Quaternion)
     collection: Tuple[str, ...] = ()
+    light: Optional[LightData] = None
 
 
 COLLECTION_KEY = "bzen_collection"
@@ -526,7 +544,74 @@ def create_edge_mesh_object(
     return obj
 
 
-def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, VisualLoader]):
+LIGHTS_COLLECTION = ("Lights",)
+"""Collection path for the Blender lights created for light VOBs."""
+
+
+def light_energy(light_range: float) -> float:
+    """
+    Power in watts that gives a Blender point light the brightness of a
+    Gothic light of ``light_range`` (Blender units).
+
+    OpenGothic lights a diffuse surface at distance d with
+    (range / d)^2 / (4 * pi), windowed to zero at the range. A Blender point
+    light of power P lights it with P / (4 * pi^2 * d^2) (measured with
+    Cycles on Blender 4.2 and 5.2). Equating the two gives P = pi * range^2:
+    a surface at half the range receives about 0.32 of its albedo, one at
+    the range about 0.08, where the light's cutoff distance ends it.
+    """
+    return math.pi * light_range**2
+
+
+def create_light_object(
+    unique_name: str,
+    parent: bpy.types.Object,
+    light: LightData,
+    collection: Optional[bpy.types.Collection] = None,
+    data_cache: Optional[Dict[Tuple[Tuple[float, float, float], float], bpy.types.Light]] = None,
+) -> bpy.types.Object:
+    """
+    Create a Blender point light for a light VOB, parented to its object.
+
+    - Point light, like OpenGothic, which ignores spot settings.
+    - Color and power from ``light`` (see light_energy); the custom cutoff
+      distance is set to the light's range, which EEVEE uses to end the
+      light where the game's does (Cycles ignores it).
+    - Shadows are off: Gothic's lights don't cast real-time shadows, and a
+      world has around a thousand of them.
+    - A disabled light (a dynamic light switched off in the game) is
+      hidden in viewports and renders but kept, so it can be switched on.
+
+    Lights with the same color and range share one light datablock via
+    ``data_cache``, just as VOBs share meshes.
+    """
+    key = (tuple(light.color), light.range)
+    data = data_cache.get(key) if data_cache is not None else None
+    if data is None:
+        data = bpy.data.lights.new(unique_name, "POINT")
+        data.color = light.color
+        data.energy = light_energy(light.range)
+        data.use_shadow = False
+        if hasattr(data, "use_custom_distance"):
+            data.use_custom_distance = True
+            data.cutoff_distance = light.range
+        if data_cache is not None:
+            data_cache[key] = data  # type: ignore[index]
+
+    obj = bpy.data.objects.new(unique_name, data)
+    obj.parent = parent
+    if not light.enabled:
+        obj.hide_viewport = True
+        obj.hide_render = True
+    (collection or bpy.context.collection).objects.link(obj)
+    return obj
+
+
+def create_vobs(
+    vobs: Dict[str, BlenderObjectData],
+    visuals_cache: Dict[str, VisualLoader],
+    create_lights: bool = False,
+):
     """
     Create Blender objects for all VOBs in a world.
 
@@ -549,10 +634,17 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
     new objects.
 
     VOBs with no mesh data are skipped (with a warning).
+
+    With ``create_lights``, every VOB carrying LightData also gets a Blender
+    point light parented to it, in the LIGHTS_COLLECTION collection (see
+    create_light_object).
     """
     success_count = 0
     obj_cache: Dict[int, bpy.types.Object] = {}  # keyed by id(mesh), not mesh content
     collections: Dict[Tuple[str, ...], bpy.types.Collection] = {}
+    light_data_cache: Dict[Tuple[Tuple[float, float, float], float], bpy.types.Light] = {}
+    lights_collection = ensure_collection(LIGHTS_COLLECTION) if create_lights else None
+    light_count = 0
 
     for vob_name, vob_data in vobs.items():
         vob_mesh = vob_data.mesh
@@ -576,5 +668,11 @@ def create_vobs(vobs: Dict[str, BlenderObjectData], visuals_cache: Dict[str, Vis
 
         success_count += 1
 
+        if create_lights and vob_data.light is not None:
+            create_light_object(f"{vob_name}.light", result, vob_data.light, lights_collection, light_data_cache)
+            light_count += 1
+
     bpy.context.view_layer.update()
     info(f"Created {success_count} VOBs")
+    if create_lights:
+        info(f"Created {light_count} lights")
