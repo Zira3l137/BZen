@@ -45,9 +45,9 @@ except ModuleNotFoundError:
     from zenkit import DaedalusVm, Vfs, VfsNode, World
 
 from log import logging_setup
-from scene import create_obj_from_mesh, create_vobs
+from scene import create_edge_mesh_object, create_obj_from_mesh, create_vobs, ensure_collection
 from visual import index_visuals, parse_world_mesh
-from vob import parse_blender_obj_data_from_world, parse_waynet
+from vob import WAYNET_EDGES_COLLECTION, parse_blender_obj_data_from_world, parse_waynet, parse_waynet_edges
 
 
 def load_world_from_archive(name: str, game_directory: Path) -> World:
@@ -182,6 +182,17 @@ def main():
         create_vobs(vobs, visuals)
         elapsed_time = perf_counter() - start_time
         perf_journal["VOBs created in (ms) "] = elapsed_time * 1000
+
+        if should_parse_waynet:
+            info("Creating waynet edges")
+            start_time = perf_counter()
+            edge_vertices, edges = parse_waynet_edges(world, scale)
+            create_edge_mesh_object(
+                "WAYNET_EDGES", edge_vertices, edges, ensure_collection(WAYNET_EDGES_COLLECTION)
+            )
+            elapsed_time = perf_counter() - start_time
+            perf_journal["Waynet edges created in (ms) "] = elapsed_time * 1000
+            info(f"Created {len(edges)} waynet edges")
 
         info(f"Saving to {output_path}...")
         blender_save_changes(filepath=str(output_path))

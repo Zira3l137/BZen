@@ -11,7 +11,7 @@ BZen is a command-line tool for converting 3D world files (`.zen`) from Gothic a
 - **Full World Conversion:** Converts the entire static world mesh from a `.zen` file.
 - **VOB Support:** Parses and places a wide variety of Virtual Objects (VOBs), including items, lights, sounds, interactive objects, decals, trigger zones, fog zones, music zones, waypoints, and more. Invisible VOBs (triggers, lights, sounds, etc.) are represented with placeholder meshes so they remain visible and selectable in Blender.
 - **Organized Scene:** VOBs are grouped into a `VOBs` collection with one child collection per VOB type (`oCItem`, `zCVobLight`, `oCMobContainer`, ...), so whole categories can be hidden, selected or excluded at once. Waypoints go into `Waynet/Waypoints`.
-- **Waynet Parsing:** Optionally parses and visualizes the waynet, showing waypoints used by NPCs.
+- **Waynet Parsing:** Optionally parses and visualizes the waynet: waypoints used by NPCs go to `Waynet/Waypoints`, and the connections between them are drawn as a single edge mesh (`WAYNET_EDGES`) in `Waynet/Waynet Edges`, so each part can be toggled on its own.
 - **Material & Texture Loading:** Automatically creates materials and loads textures from loose files and `.vdf` archives.
 - **Efficient Instancing:** Reuses mesh data for identical objects to keep `.blend` files small and performant.
 - **Flexible Input:** Accepts a full path to a `.zen` file, a bare filename (auto-searched in the game's archives and working directory), or a prefixed name to force a specific search location (see [Input Formats](#-input-formats) below).
@@ -102,7 +102,7 @@ The tool runs in two stages:
 - Parses the static world mesh and creates a single `LEVEL` object in Blender.
 - Iterates all VOBs in the world tree, creates a unique mesh object for each distinct visual, and instances it for every subsequent VOB sharing that visual.
 - Invisible VOB types (triggers, lights, sounds, etc.) are placed using internal placeholder meshes so they appear in the scene.
-- If `--waynet` is set, waypoints are also parsed and placed.
+- If `--waynet` is set, waypoints are also parsed and placed, and the connections between them are built as one mesh of loose edges.
 - Saves the result to the specified `.blend` file and writes a log file next to it.
 
 ## 🙏 Acknowledgements
