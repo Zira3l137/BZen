@@ -1,10 +1,11 @@
-from logging import error, info
-from typing import Dict, Optional, Tuple, cast
+from logging import debug, error, info
+from typing import Dict, Optional, Set, Tuple, cast
 
 from mathutils import Quaternion, Vector
 from scene import BlenderObjectData
 from utils import trim_suffix
-from visual import (MeshData, VisualLoader, parse_decal_mesh,
+from visual import (MeshData, MissingVisualError, VisualLoader,
+                    load_indexed_visual, parse_decal_mesh,
                     parse_multi_resolution_mesh, parse_visual_data,
                     parse_visual_data_from_vob)
 from zenkit import (DaedalusInstanceType, DaedalusVm, ItemInstance, Mat3x3,
@@ -163,7 +164,7 @@ def get_special_blender_obj_data(
     if vob_visual_name in mesh_cache:
         mesh_data = mesh_cache[vob_visual_name]
     else:
-        mrm = cast(MultiResolutionMesh, visuals_cache[vob_visual_name]())
+        mrm = cast(MultiResolutionMesh, load_indexed_visual(visuals_cache, vob_visual_name))
         mesh_data = parse_multi_resolution_mesh(mrm, scale)
         if not mesh_data:
             raise ParseMeshError(f'Could not retrieve mesh data for "{vob_name}"')
@@ -379,6 +380,7 @@ def parse_blender_obj_data_from_world(
     """
     blender_objects: Dict[str, BlenderObjectData] = {}
     mesh_cache: Dict[str, MeshData] = {}
+    reported_missing: Set[str] = set()
     stack = world.root_objects
 
     while stack:
@@ -417,6 +419,14 @@ def parse_blender_obj_data_from_world(
             error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
         except ParseItemVisualError as e:
             error(f"Failed to index VOB {vob.name}: {e.__repr__()}")
+        except MissingVisualError as e:
+            # One missing file typically affects many VOBs (e.g. every light when
+            # its placeholder mesh is absent); report it once, the rest at debug.
+            if e.name not in reported_missing:
+                reported_missing.add(e.name)
+                error(f'Missing asset "{e.name}": skipping VOB "{vob.name}" and every other VOB that needs it')
+            else:
+                debug(f'Skipping VOB "{vob.name}": missing asset "{e.name}"')
 
         # Traverse children
         if vob.children:

@@ -102,12 +102,14 @@ For .mds files, the parser also loads the corresponding .mdh file.
 """
 
 _parse_visual_data = {
-    "3ds": lambda name, cache, scale: parse_multi_resolution_mesh(cache[name](), scale),
-    "asc": lambda name, cache, scale: parse_model(cache[name](), scale),
+    "3ds": lambda name, cache, scale: parse_multi_resolution_mesh(load_indexed_visual(cache, name), scale),
+    "asc": lambda name, cache, scale: parse_model(load_indexed_visual(cache, name), scale),
     "mds": lambda name, cache, scale: parse_model_mesh(
-        cache[name](), cache[with_suffix(name, "mdh", True).lower()](), scale
+        load_indexed_visual(cache, name),
+        load_indexed_visual(cache, with_suffix(name, "mdh", True).lower()),
+        scale,
     ),
-    "mms": lambda name, cache, scale: parse_morph_mesh(cache[name](), scale),
+    "mms": lambda name, cache, scale: parse_morph_mesh(load_indexed_visual(cache, name), scale),
 }
 
 """
@@ -206,6 +208,33 @@ class MeshData:
             + len(self.uvs)
             + sum(hash(m) for m in self.materials)
         )
+
+
+class MissingVisualError(Exception):
+    """
+    Raised when a visual needed to build a mesh is not in the visuals index,
+    i.e. the file exists neither on disk nor in any of the mounted archives.
+
+    The missing (lowercased, compiled) file name is available as ``name`` so
+    callers can report each missing file once instead of once per VOB.
+    """
+
+    def __init__(self, name: str):
+        super().__init__(f'"{name}" was not found in the game files')
+        self.name = name
+
+
+def load_indexed_visual(cache: Dict[str, VisualLoader], name: str) -> Optional[VobVisual]:
+    """
+    Load the visual indexed under ``name``.
+
+    Raises MissingVisualError if nothing was indexed under that name, instead
+    of the bare KeyError a plain ``cache[name]`` lookup would raise.
+    """
+    loader = cache.get(name)
+    if loader is None:
+        raise MissingVisualError(name)
+    return loader()
 
 
 def _make_loader(path: str | Path | VfsNode, extension: VisualExtension) -> VisualLoader:
