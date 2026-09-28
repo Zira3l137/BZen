@@ -1,11 +1,13 @@
 """
 Import helper.
 
-This module exists solely to inject the parent directory into sys.path
-so that sibling packages (e.g., the parent of bzen) can import
-modules from bzen without manual PYTHONPATH manipulation.
+The modules in this package import each other by bare name (e.g.
+``from utils import ...``) because zen_to_blend.py is run by Blender as a
+standalone script, not as part of the package. This adds the package
+directory itself to sys.path so those imports also resolve when the
+package is imported normally (e.g. by the ``bzen`` console script).
 
-It is imported by every module in this package, not intended for
+It runs once, when the package is first imported; it is not intended for
 external use.
 """
 

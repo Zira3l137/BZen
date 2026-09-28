@@ -76,18 +76,13 @@ class ParseItemVisualError(Exception):
 
 def get_blender_obj_quaternion_rotation(matrix: Mat3x3) -> Quaternion:
     """
-    Convert a Mat3x3 rotation matrix to a Blender Quaternion.
+    Convert a VOB's rotation matrix to a Blender Quaternion.
 
-    Mat3x3 uses standard quaternion (x, y, z, w) convention. Blender's
-    Quaternion uses (w, x, z, y) — the y and z axes are swapped because
-    the VOB rotation is in a different coordinate system than the Blender
-    object coordinate system (Y is Y, Z is X, X is Z in the Gothic
-    coordinate system, which is right-handed with Y as vertical axis).
-
-    The conversion swaps the y and z components and returns the result.
-
-    The matrix comes from a VOB's rotation field, which represents the
-    rotation applied to the VOB's position.
+    The matrix is converted to a quaternion by ZenKit, and its y and z
+    components are then swapped, matching the Y/Z swap applied to
+    positions: Gothic's coordinate system is left-handed with Y up,
+    Blender's is right-handed with Z up. Blender quaternions are ordered
+    (w, x, y, z).
     """
     quat = matrix.to_quaternion()
     quat = Quaternion((quat.w, quat.x, quat.z, quat.y))
@@ -98,17 +93,14 @@ def get_blender_obj_position(vector: Vec3f, scale: float = 0.01) -> Vector:
     """
     Convert a VOB position vector to a Blender position.
 
-    Gothic's coordinate system (used by Daedalus/VirtualObject) has:
-    - Y axis as the vertical axis (up/down)
-    - X and Z axes swapped relative to Blender's
-
-    Blender's coordinate system has:
-    - Y axis as the vertical axis (up/down)
-    - X and Z axes as the horizontal axes (X = left/right, Z = back/front)
+    Gothic's coordinate system is left-handed with Y as the vertical axis;
+    Blender's is right-handed with Z as the vertical axis. Swapping the Y
+    and Z components converts between the two (the swap is also what
+    turns left-handed into right-handed).
 
     This function:
     1. Extracts the x, y, z components from the Vec3f vector.
-    2. Swaps the X and Z components (Blender uses X = horizontal, Z = depth).
+    2. Swaps the Y and Z components.
     3. Applies the scale factor to convert from centimeters to meters.
 
     The scale factor (default 0.01) is a hard requirement of the format:
@@ -145,7 +137,7 @@ def get_special_blender_obj_data(
     - For unnamed VOBs: "invisible:{vob_type.name}_{vob.id}"
 
     The position is converted from Gothic's coordinate system using
-    get_blender_obj_position (which swaps X/Z axes and applies the scale
+    get_blender_obj_position (which swaps the Y/Z axes and applies the scale
     factor). The rotation is converted from a Mat3x3 matrix to a Quaternion
     using get_blender_obj_quaternion_rotation (which swaps Y/Z axes).
 
@@ -184,10 +176,9 @@ def get_decal_blender_obj_data(
     """
     Create BlenderObjectData for a decal VOB.
 
-    Decals are decorative objects (e.g., decorative images, textures).
-    They have a special visual format (.mdh files) that is parsed using
-    parse_decal_mesh, which creates a rectangular mesh from the decal's
-    dimensions.
+    Decals are textures drawn on a flat quad (blood stains, signs and
+    the like). Their visual is a texture, not a mesh, so parse_decal_mesh
+    generates the quad from the decal's dimensions.
 
     The BlenderObjectData's name is a string that identifies the VOB in the
     Blender scene. The format is "{trimmed_visual_name}_{vob.id}" where the
@@ -199,7 +190,7 @@ def get_decal_blender_obj_data(
     the mesh_cache.
 
     The position is converted from Gothic's coordinate system using
-    get_blender_obj_position (which swaps X/Z axes and applies the scale
+    get_blender_obj_position (which swaps the Y/Z axes and applies the scale
     factor). The rotation is converted from a Mat3x3 matrix to a Quaternion
     using get_blender_obj_quaternion_rotation (which swaps Y/Z axes).
 
@@ -253,7 +244,7 @@ def get_item_blender_obj_data(
     the mesh_cache.
 
     The position is converted from Gothic's coordinate system using
-    get_blender_obj_position (which swaps X/Z axes and applies the scale
+    get_blender_obj_position (which swaps the Y/Z axes and applies the scale
     factor). The rotation is converted from a Mat3x3 matrix to a Quaternion
     using get_blender_obj_quaternion_rotation (which swaps Y/Z axes).
 
@@ -308,7 +299,7 @@ def get_generic_blender_obj_data(
     and added to the mesh_cache.
 
     The position is converted from Gothic's coordinate system using
-    get_blender_obj_position (which swaps X/Z axes and applies the scale
+    get_blender_obj_position (which swaps the Y/Z axes and applies the scale
     factor). The rotation is converted from a Mat3x3 matrix to a Quaternion
     using get_blender_obj_quaternion_rotation (which swaps Y/Z axes).
 
@@ -359,15 +350,15 @@ def parse_blender_obj_data_from_world(
     3. If the mesh is not in the cache, the VOB's visual is parsed
        (depending on the VOB type) and added to the mesh_cache.
 
-    The function catches ParseMeshError and ParseItemVisualError
-    exceptions and logs the error. If an error is caught, the VOB is
-    skipped (no BlenderObjectData is created for it).
+    Any error while parsing a single VOB is logged and that VOB is skipped
+    (no BlenderObjectData is created for it); its children are still
+    parsed. A missing asset is logged as an error once and at debug level
+    for further VOBs needing it. VOBs without a visual are skipped at
+    debug level.
 
-    The position is converted from Gothic's coordinate system (which
-    has Y as the vertical axis and X/Z swapped) to Blender's coordinate
-    system (which has Y as the vertical axis and X/Z as the horizontal
-    axes). The conversion is done using get_blender_obj_position
-    (which swaps X/Z axes and applies the scale factor). The scale
+    The position is converted from Gothic's coordinate system (left-handed,
+    Y up) to Blender's (right-handed, Z up) using get_blender_obj_position
+    (which swaps the Y/Z axes and applies the scale factor). The scale
     factor (default 0.01) is a hard requirement of the format: Gothic
     stores all linear dimensions in centimeters.
 
@@ -459,15 +450,15 @@ def parse_waynet(
 
     For each waypoint, the position is converted from Gothic's coordinate
     system to Blender's coordinate system using get_blender_obj_position
-    (which swaps X/Z axes and applies the scale factor). The rotation is
-    computed from the waypoint's direction vector: the direction is
-    converted to a Vector (x, z, y) — swapping the Y and Z axes because
-    Gothic's Y is the vertical axis and Blender's Y is the vertical
-    axis — and then converted to a quaternion using the to_track_quat
-    method with "Y" and "Z" axes (which creates a quaternion that rotates
-    around the Y axis to reach the direction, in the Z plane).
+    (which swaps the Y/Z axes and applies the scale factor). The rotation
+    is computed from the waypoint's direction vector: the direction is
+    converted to a Vector (x, z, y), swapping Y and Z because Gothic's
+    vertical axis is Y and Blender's is Z, and then turned into a
+    quaternion with to_track_quat("Y", "Z"), which points the object's +Y
+    axis along the direction while keeping its +Z axis up.
 
-    The waypoints are named using the waypoint's name (lowercased).
+    The waypoints are named using the waypoint's name (lowercased);
+    duplicate names get a ".001"-style suffix (see utils.insert_unique).
 
     Returns a dictionary mapping waypoint names to BlenderObjectData
     objects. Each BlenderObjectData has the waypoint's position and
@@ -521,8 +512,9 @@ def parse_item_visual_name(obj: VirtualObject, vm: DaedalusVm) -> Optional[str]:
 
     If the item has no visual, the function logs an error and returns
     None. If the item cannot be instantiated (e.g., the item does not
-    exist in the item database), an AttributeError is raised, which
-    is caught by the caller and re-raised as a ParseItemVisualError.
+    exist in the item database, so the symbol lookup returns None), the
+    resulting AttributeError is caught here and re-raised as a
+    ParseItemVisualError.
 
     Returns the visual name (a string) or None if the item has no
     visual.

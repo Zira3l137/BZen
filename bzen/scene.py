@@ -52,20 +52,20 @@ def create_texture(name: str, texture: Texture) -> bpy.types.Image:
     """
     Convert a ZenKit Texture into a Blender image asset.
 
-    ZenKit stores textures with top-left pixel origin, uint8 RGBA (0-255),
-    and a separate alpha layer. Blender expects bottom-left origin,
-    float32 RGBA (0-1), single pixel array. This function:
+    ZenKit returns the pixels as uint8 RGBA (0-255) rows starting at the
+    top-left. Blender expects float RGBA (0-1) rows starting at the
+    bottom-left, as one flat array. This function:
 
-    1. Extracts the mipmapped RGBA buffer (uint8).
+    1. Extracts the RGBA buffer of the largest mipmap level (uint8).
     2. Converts to float32 and normalizes to [0, 1] range.
-    3. Reorders axes and flips vertically (top-left -> bottom-left).
+    3. Reshapes to rows and flips vertically (top-left -> bottom-left).
     4. Creates and packs the Blender image.
 
     Texture packing embeds the image data directly into the .blend file,
     eliminating external file dependencies at runtime.
 
-    This is called only when a material references a texture that has not
-    yet been loaded into the visuals cache.
+    This is called only when a material references a texture for which no
+    Blender image exists yet.
     """
     img_bytes = texture.mipmap_rgba(0)
     width, height = texture.width, texture.height
@@ -89,10 +89,11 @@ def create_material(material: MaterialData, visuals_cache: Dict[str, VisualLoade
     texture, so meshes that use an identical material share one Blender
     material, while same-named materials that differ get their own.
 
-    The material is built using Blender's node system:
-    ShaderNodeTexImage (texture) -> ShaderNodeInvert (alpha) +
-    ShaderNodeBsdfDiffuse (color) -> ShaderNodeMixShader +
-    ShaderNodeBsdfTransparent (transparency) -> ShaderNodeOutputMaterial.
+    The material is built using Blender's node system: the texture color
+    feeds a Diffuse BSDF, and the texture alpha drives a Mix Shader between
+    a Transparent BSDF (alpha 0) and the diffuse (alpha 1), which goes to
+    the Material Output. The alpha passes through an Invert node whose
+    factor is 0, i.e. it is not inverted.
 
     If the material has no texture, a simple diffuse color material is
     created without the node graph.
@@ -181,14 +182,12 @@ def create_obj_from_mesh(
     creates a Blender mesh object, assigns UV data if present, and
     applies materials from the visuals cache.
 
-    Materials are referenced by name in the mesh data and resolved
-    from the visuals_cache (which includes already-created Blender
-    materials or loader callables). Materials are created if they
-    don't yet exist in the registry.
+    Materials come from the mesh data and are turned into Blender
+    materials by create_material, which reuses identical ones and loads
+    textures through the visuals_cache (name -> loader).
 
-    The object is linked to the context collection (the active Blender
-    scene). Objects created by this function are never unlinked — they
-    are part of the converted world.
+    The object is linked to the context collection of the active Blender
+    scene.
     """
     mesh = bpy.data.meshes.new(unique_name)
     mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
@@ -229,8 +228,7 @@ def create_obj_from_vob_data(
     is used to create a Blender mesh object, and the object's position
     and rotation are set from the BlenderObjectData.
 
-    Returns None if the VOB has no mesh data (which is a warning
-    condition, not an error).
+    Logs an error and returns None if the VOB has no mesh data.
     """
     vob_mesh = vob_data.mesh
 
@@ -251,8 +249,8 @@ def create_instance_from_vob_data(
     """
     Create a Blender object instance from an existing Blender object.
 
-    This function clones a Blender object (creating a new object that
-    references the same mesh data) and sets the clone's position and
+    This function creates a new Blender object that shares the mesh data
+    of ``obj`` (no geometry is copied) and sets its position and
     rotation. Used to instance VOBs that share the same mesh, avoiding
     the creation of duplicate mesh objects.
 

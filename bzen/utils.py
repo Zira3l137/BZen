@@ -62,7 +62,8 @@ def suffix(path: str, dot: bool = False) -> str:
     If dot is True, the leading dot is included (e.g., ".tga");
     otherwise it is stripped (e.g., "tga").
 
-    Returns an empty string if the path has no extension.
+    Only the last path component is considered. Returns an empty string
+    if it has no extension.
     """
     file_name = path.replace("\\", "/").rsplit("/", 1)[-1]
     if "." not in file_name:
@@ -87,12 +88,15 @@ def canonical_case_path(path: Path | str) -> Path:
     Resolve a path using case-insensitive directory traversal.
 
     This function traverses each component of the path from the
-    starting directory, matching directories case-insensitively.
-    The result is an absolute path with the actual (case-pensitive)
-    directory names.
+    starting directory (the file system root for absolute paths, the
+    current directory otherwise), matching every component
+    case-insensitively. The result is an absolute path with the names as
+    they are actually spelled on disk.
 
-    This is needed because the ZenKit game format uses directories with
-    inconsistent casing (e.g., "_work/data" vs "data/_WORK").
+    This is needed because Gothic installations come from Windows, where
+    paths are case-insensitive: the same folder may be "_work/Data" in one
+    installation and "_WORK/DATA" in another, which matters on
+    case-sensitive file systems such as Linux.
 
     Raises FileNotFoundError if any component does not exist as a
     case-insensitive match.
@@ -168,12 +172,10 @@ def install_dependencies_locally():
 def blender_clean_scene():
     """Clear the active Blender scene's collection (objects and child collections).
 
-    This function removes all objects and child collections from the
-    current Blender scene's collection. It is used to ensure a clean
-    scene before loading a new world.
-
-    The function operates on bpy.context.scene.collection, which is the
-    root collection of the current Blender scene.
+    This function unlinks all objects and child collections from the
+    current Blender scene's root collection (bpy.context.scene.collection)
+    and then purges orphaned data blocks, so the world is loaded into an
+    empty scene.
     """
     scene = bpy.context.scene
 

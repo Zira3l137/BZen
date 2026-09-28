@@ -30,9 +30,9 @@ the VOB parsing stage (vob.py) and the Blender object creation stage
 (scene.py). They are frozen with slots for immutability and memory
 efficiency.
 
-The __hash__ methods are used for deduplication — identical mesh data
-from different VOBs should hash the same so that the instancing cache
-can correctly identify them as duplicates.
+Deduplication does not rely on hashing MeshData: parsed meshes are cached
+by visual name in vob.py, and scene.create_vobs instances Blender objects
+by the identity (id()) of the shared MeshData object.
 """
 
 
@@ -60,9 +60,10 @@ class VisualExtension(str, Enum):
 
 
 """
-Mapping from compiled ZenKit file extensions to the corresponding
-VisualExtension enum values. This is used during parsing to determine
-which loader and parser function to use for a given compiled visual file.
+Mapping from the source file extension a VOB's visual refers to (e.g.
+"TREE.3DS") to the extension of the compiled file the game actually
+ships (e.g. "tree.mrm"). parse_visual_data uses it to find the compiled
+file for a visual name.
 """
 
 _compiled_extension = {
@@ -74,12 +75,12 @@ _compiled_extension = {
 }
 
 """
-Mapping from compiled file extension to the loader function for each
-VisualExtension. The loader function takes a path (str, Path, or VfsNode)
-and returns the parsed object or None.
+Mapping from compiled file extension (VisualExtension) to the ZenKit
+loader for that file type. Each loader takes a path (str, Path, or
+VfsNode) and returns the loaded ZenKit object.
 
-This is used by index_visuals_from_disk and index_visuals_from_archives
-to load visuals from both disk and VFS archives.
+Used by load_visual, which the lazy loaders created during indexing call,
+so visuals from disk and from VFS archives are loaded the same way.
 """
 
 _load_visual = {
@@ -92,13 +93,13 @@ _load_visual = {
 }
 
 """
-Mapping from compiled file extension to the parser function for each
-visual type. The parser takes the compiled file name (with .3ds,
-.asc, .mds, or .mms extension), a cache of VisualLoaders (for
-cross-reference lookups), and a scale factor.
+Mapping from source file extension (3ds, asc, mds, mms) to the parser for
+that visual type. Each parser takes the compiled file name (with .mrm,
+.mdl, .mdm, or .mmb extension), the visuals cache (to load that file and
+any files it depends on), and a scale factor.
 
 This is used by parse_visual_data to dispatch to the correct parser.
-For .mds files, the parser also loads the corresponding .mdh file.
+For .mds visuals, the parser also loads the matching .mdh hierarchy.
 """
 
 _parse_visual_data = {
@@ -113,16 +114,15 @@ _parse_visual_data = {
 }
 
 """
-The base transformation matrix used to convert VOB positions from
-Gothic coordinate system (Y is Y, Z is X, X is Z) with negative
-X axis, to Blender's coordinate system (standard right-handed,
-positive X axis).
+Base matrices for converting model hierarchy (node) transforms from
+Gothic's coordinate system (left-handed, Y up) to Blender's (right-handed,
+Z up):
 
-This transformation is: rotate 90° in Y axis (Z->-X) then scale by -1/4
-and shift to origin.
+- BASE_SCALE_MATRIX mirrors the Y axis (scale by -1 along Y).
+- BASE_ROTATION_MATRIX rotates -90 degrees about the X axis.
 
-This matrix is NOT used directly in the codebase — the position and
-rotation are computed separately in vob.py using individual operations.
+They are used by parse_mesh_attachments. VOB positions and rotations are
+converted separately in vob.py by swapping the Y and Z components.
 """
 
 BASE_SCALE_MATRIX = Matrix().Scale(-1, 4, Vector((0, 1, 0)))
@@ -154,15 +154,15 @@ VISUAL_ARCHIVES = [
 @dataclass(frozen=True, slots=True)
 class MaterialData:
     """
-    Material definition parsed from a VOB.
+    Material definition parsed from a mesh.
 
     A material consists of a name, a diffuse color (RGBA with values
     0-1), and an optional texture name. Materials are used to create
-    Blender materials during VOB creation.
+    Blender materials when mesh objects are created.
 
-    The __hash__ method is used for deduplication — materials with
-    the same name, color, and texture are considered identical so
-    that the materials cache can correctly identify them as duplicates.
+    Materials with the same name, color and texture are considered
+    identical; scene.create_material shares one Blender material between
+    them.
     """
     name: str
     color: Tuple[float, float, float, float]
@@ -181,13 +181,14 @@ class MeshData:
     UV data) and material assignments. It is used to create Blender
     mesh objects in scene.py.
 
-    The is_empty method is used by parse_world_mesh to determine whether
-    a mesh is empty (has no vertices). Empty meshes are skipped during
-    conversion.
+    Normals and UVs are stored per face corner (three per triangle, in
+    face order), while vertices are shared between faces.
 
-    The __hash__ method is used for deduplication — identical meshes
-    from different VOBs should hash the same so that the instancing
-    cache can correctly identify them as duplicates.
+    The is_empty method (no vertices) is used by zen_to_blend to report
+    an empty level mesh.
+
+    The __hash__ method is a cheap size-based hash; it is not used for
+    deduplication (see the module notes above).
     """
     vertices: List[Vector] = field(default_factory=list)
     faces: List[Tuple[int, int, int]] = field(default_factory=list)
@@ -266,8 +267,11 @@ def index_visuals(game_directory: Path) -> Dict[str, VisualLoader]:
     is built in memory; the actual loading of visuals happens lazily
     when a VisualLoader is called.
 
-    If indexing fails (e.g., because a directory does not exist), an
-    exception is raised with the message "Failed to index visuals".
+    Archives are indexed after disk files, so when both contain a file
+    with the same name, the archive's copy is used.
+
+    If indexing fails, "Failed to index visuals" is logged and the
+    original exception is re-raised.
     """
     try:
         visuals = {}
@@ -289,13 +293,13 @@ def index_visuals_from_disk(game_directory: Path, visuals: Dict[str, VisualLoade
     This function walks the specified directories (anims, textures, meshes)
     and indexes any files with extensions matching VisualExtension values.
 
-    Compiled textures (.tex) are renamed during indexing: the compiled
-    texture file name (e.g., "texture-0001-256x256.c.TGA") is replaced
-    with the base name (e.g., "texture-0001.tga"). This matches the
-    naming convention used by VOB parsing.
+    Compiled textures (.tex) are indexed under their source name: the
+    compiled name (e.g., "STONE-C.TEX") becomes "stone.tga", which is how
+    materials refer to them.
 
     Indexed visuals are added to the `visuals` dictionary (passed by
-    reference). Existing entries with the same name are not overwritten.
+    reference). An existing entry with the same name is overwritten.
+    Missing _compiled directories are skipped.
     """
     paths = []
     for category in VISUAL_CATEGORIES:
@@ -335,13 +339,14 @@ def index_visuals_from_archives(game_directory: Path, visuals: Dict[str, VisualL
     as a VFS virtual filesystem and indexes any files with extensions
     matching VisualExtension values.
 
-    Compiled textures (.tex) are renamed during indexing: the compiled
-    texture file name (e.g., "texture-0001-256x256.c.TGA") is replaced
-    with the base name (e.g., "texture-0001.tga"). This matches the
-    naming convention used by VOB parsing.
+    Compiled textures (.tex) are indexed under their source name: the
+    compiled name (e.g., "STONE-C.TEX") becomes "stone.tga", which is how
+    materials refer to them.
 
     Indexed visuals are added to the `visuals` dictionary (passed by
-    reference). Existing entries with the same name are not overwritten.
+    reference). An existing entry with the same name is overwritten, so
+    archives take precedence over disk files, and later archives in
+    VISUAL_ARCHIVES over earlier ones.
 
     If an archive file does not exist, the function silently skips it.
     """
@@ -380,9 +385,10 @@ def load_visual(path: str | Path | VfsNode, extension: VisualExtension) -> Optio
     The actual loading is done by the loader function in the
     _load_visual mapping, which is selected based on the extension.
 
-    Returns None if loading fails (e.g., the file does not exist or
-    is corrupted). This can happen during VOB parsing when a VOB
-    references a visual that does not exist in the visuals cache.
+    Returns whatever the ZenKit loader returns; ZenKit does not report
+    failures consistently, so callers treat any exception as a failed
+    load. Visuals that are not indexed at all never reach this function
+    (see load_indexed_visual).
     """
     return _load_visual[extension](path)
 
@@ -391,16 +397,18 @@ def parse_visual_data(name: str, cache: Dict[str, VisualLoader], scale: float = 
     """
     Parse mesh data from a compiled visual file.
 
-    This function is the entry point for parsing compiled visual files
-    (e.g., .3ds, .asc, .mds, .mms). The visual name is used to
-    determine the file extension and the appropriate parser function.
+    This function is the entry point for parsing visuals. ``name`` is the
+    source name a VOB refers to (e.g., "tree.3ds", "hero.mds"); its
+    extension selects the parser and the compiled file (.mrm, .mdm/.mdh,
+    .mdl, .mmb) that is actually loaded.
 
     The cache is used for cross-reference lookups during parsing (e.g.,
     .mds files may reference .mdh files). The scale factor (default
     0.01) is applied to all mesh vertices during parsing.
 
-    Returns None if the name has no extension, the extension is not
-    in the _compiled_extension mapping, or the parsed mesh is empty.
+    Returns None if the name has no extension or the extension is not in
+    the _compiled_extension mapping. Raises MissingVisualError if the
+    compiled file (or a file it depends on) is not in the cache.
     """
     extension = suffix(name).lower()
     if extension == "" or extension not in _compiled_extension:
@@ -443,9 +451,9 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
     centimeter units to Blender's meter units. This is a hard requirement
     of the format: Gothic stores all linear dimensions in centimeters.
 
-    Vertices and materials are deduplicated during parsing to minimize
-    memory and file size. BSP leaf polygons that are portals or ghost
-    occluders are skipped.
+    Vertices are deduplicated by position during parsing to minimize
+    memory and file size; polygons referenced by several BSP leaves are
+    emitted once. Portal and ghost occluder polygons are skipped.
 
     Returns an empty MeshData if the world has no mesh.
     """
@@ -552,8 +560,8 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
     Positions are deduplicated during parsing to minimize memory and file
     size. The function returns a MeshData object with all parsed mesh data.
 
-    The vertex cache (vertex_cache) maps positions to face indices to avoid
-    creating duplicate vertex entries.
+    The vertex cache (vertex_cache) maps positions to vertex indices to
+    avoid creating duplicate vertex entries.
     """
     vertices, uvs, faces = [], [], []
     normals, materials, material_indices = [], [], []
@@ -609,19 +617,18 @@ def parse_multi_resolution_mesh(mrm: MultiResolutionMesh, scale: float = 0.01) -
 
 def parse_decal_mesh(vob: VirtualObject, scale: float = 0.01) -> Optional[MeshData]:
     """
-    Parse a decal (decorative object) mesh.
+    Build the mesh for a decal VOB.
 
-    Decals are VOBs with a special visual format (.mdh files) that represents
-    a rectangular decorative object with a front and back face (for reflections).
-
-    The resulting mesh is always a fixed 4-vertex (8-vertex for the back face)
-    rectangular shape with a single material (the decal's own texture). The
-    vertices are computed from the decal's dimension (width/height).
+    A decal's visual is a texture (e.g. "BLOOD.TGA") drawn on a flat quad
+    rather than a mesh file, so the quad is generated here: 4 vertices for
+    the front and 4 for the back, so the decal is visible from both sides,
+    with a single material using the decal's texture. The quad spans
+    -dimension..+dimension on both axes.
 
     The scale factor (default 0.01) is applied to the decal's dimensions to
     convert from Gothic's centimeter units to Blender's meter units.
 
-    Returns None if the VOB has no visual.
+    The VOB must have a decal visual; callers check this beforehand.
     """
     visual_name = vob.visual.name.lower()
     visual: VisualDecal = vob.visual  # type: ignore
@@ -686,11 +693,11 @@ def parse_mesh_attachments(
     mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01
 ) -> Tuple[MeshData, Tuple[int, int]]:
     """
-    Parse mesh attachments from a model mesh file.
+    Parse mesh attachments from a model mesh.
 
-    Model mesh files (.mds) can reference additional mesh data through
-    attachments — the mesh objects referenced by node names in the
-    model hierarchy.
+    Besides soft-skinned meshes, a model mesh (.mdm) can contain
+    attachments: rigid meshes attached to named nodes of the model
+    hierarchy (.mdh), e.g. the parts of a chest or a door.
 
     For each attachment, the function:
     1. Parses the attached mesh data using parse_multi_resolution_mesh.
@@ -772,7 +779,7 @@ def parse_mesh_attachments(
 
 def parse_model_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -> MeshData:
     """
-    Parse a model mesh (.mds) with associated hierarchy (.mdh).
+    Parse a model mesh (.mdm, compiled from .mds) with its hierarchy (.mdh).
 
     Model meshes consist of soft skin meshes (parsed as multi-resolution
     meshes) and attachments (parsed as meshes with node transforms).
@@ -820,21 +827,21 @@ def parse_model_mesh(mdm: ModelMesh, mdh: ModelHierarchy, scale: float = 0.01) -
 
 def parse_morph_mesh(mmb: MorphMesh, scale: float = 0.01) -> MeshData:
     """
-    Parse a morph mesh (.mms).
+    Parse a morph mesh (.mmb, compiled from .mms).
 
-    Morph meshes are a legacy format that is handled by treating the
-    mesh as a multi-resolution mesh. This function delegates to
-    parse_multi_resolution_mesh, which handles the mesh parsing.
+    Morph meshes are meshes with vertex animations (e.g. heads with facial
+    expressions). Only the base mesh is converted, by delegating to
+    parse_multi_resolution_mesh; the morph animations are ignored.
     """
     return parse_multi_resolution_mesh(mmb.mesh, scale)
 
 
 def parse_model(mdl: Model, scale: float = 0.01) -> MeshData:
     """
-    Parse a model (.asc).
+    Parse a model (.mdl, compiled from .asc).
 
-    Models are parsed as model meshes by delegating to parse_model_mesh,
-    which extracts the mesh and hierarchy and returns a MeshData.
+    A model bundles a model mesh and its hierarchy in one file; both are
+    passed to parse_model_mesh.
 
     The scale factor (default 0.01) is applied during parsing to convert
     from Gothic's centimeter units to Blender's meter units.
