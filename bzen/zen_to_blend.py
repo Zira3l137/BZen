@@ -117,6 +117,7 @@ def main():
         output_path: Path = args.output
         scale: float = args.scale
         should_parse_waynet: bool = args.waynet
+        should_create_lights: bool = args.lights
         perf_journal: Dict[str, float] = dict()
 
         logging_setup(args.verbosity, output_path.with_name(f"{output_path.stem}.log"))
@@ -179,7 +180,7 @@ def main():
 
         info("Creating VOBs")
         start_time = perf_counter()
-        create_vobs(vobs, visuals)
+        create_vobs(vobs, visuals, create_lights=should_create_lights)
         elapsed_time = perf_counter() - start_time
         perf_journal["VOBs created in (ms) "] = elapsed_time * 1000
 

@@ -14,6 +14,7 @@ BZen is a command-line tool for converting 3D world files (`.zen`) from Gothic a
 - **Waynet Parsing:** Optionally parses and visualizes the waynet: waypoints used by NPCs go to `Waynet/Waypoints`, and the connections between them are drawn as a single edge mesh (`WAYNET_EDGES`) in `Waynet/Waynet Edges`, so each part can be toggled on its own.
 - **Material & Texture Loading:** Automatically creates materials and loads textures from loose files and `.vdf` archives.
 - **Animated Textures:** Textures that the game animates (names containing `_A0`, such as waterfalls or fire) cycle through their frames at the in-game speed as the Blender timeline plays. Materials the game scrolls (flowing water and the like) scroll in the same direction and at the same speed. All frames are packed into the `.blend`, and the speed follows the scene's frame rate. Each frame is a separate texture in the material, so on some GPUs EEVEE may fail to display (pink) animations with many frames; Cycles is not affected. At `-v 2` the log lists every animated texture with its frame count.
+- **Lights (opt-in):** With `--lights`, every light VOB also gets a Blender point light with the VOB's color and a brightness that matches the in-game falloff, collected in a `Lights` collection. Lights switched off in the game are created but hidden. Note that EEVEE before Blender 4.2 renders at most 128 active lights at a time; Cycles and EEVEE in 4.2+ are not limited this way.
 - **Efficient Instancing:** Reuses mesh data for identical objects to keep `.blend` files small and performant.
 - **Flexible Input:** Accepts a full path to a `.zen` file, a bare filename (auto-searched in the game's archives and working directory), or a prefixed name to force a specific search location (see [Input Formats](#-input-formats) below).
 - **Log File Output:** Always writes a `.log` file alongside the output `.blend` file (same name, same directory) for post-run inspection.
@@ -88,6 +89,7 @@ The `input` argument is more flexible than a plain file path. Three formats are 
 | `--output` | `-o` | Path for the output `.blend` file. Defaults to the current directory, named after the input file. A `.log` file is always written alongside it. |
 | `--scale` | `-s` | World scale factor. Defaults to `0.01` (converts Gothic's centimeter units to Blender's meter units). |
 | `--waynet` | `-w` | Include the waynet (NPC navigation points) in the output. Disabled by default. |
+| `--lights` | `-l` | Create a Blender point light for every light VOB. Disabled by default. |
 | `--verbosity` | `-v` | Logging detail level: `0` = Errors only (default), `1` = Warnings, `2` = Info, `3` = Debug. |
 
 ## 🔬 How It Works
@@ -103,6 +105,7 @@ The tool runs in two stages:
 - Parses the static world mesh and creates a single `LEVEL` object in Blender.
 - Iterates all VOBs in the world tree, creates a unique mesh object for each distinct visual, and instances it for every subsequent VOB sharing that visual.
 - Invisible VOB types (triggers, lights, sounds, etc.) are placed using internal placeholder meshes so they appear in the scene.
+- If `--lights` is set, a point light is created for every light VOB.
 - If `--waynet` is set, waypoints are also parsed and placed, and the connections between them are built as one mesh of loose edges.
 - Saves the result to the specified `.blend` file and writes a log file next to it.
 

@@ -17,6 +17,7 @@ def parse_args() -> Dict[str, Any]:
         output: Path to the output file (defaults to current directory)
         scale: Scale factor (default: 0.01)
         waynet: Parse waynet (default: False)
+        lights: Create Blender lights for light VOBs (default: False)
         verbosity: Verbosity level (0-3) (default: 0)
     """
     parser = ArgumentParser()
@@ -38,6 +39,12 @@ def parse_args() -> Dict[str, Any]:
     )
     parser.add_argument("-w", "--waynet", action="store_true", help="Parse waynet (default: False)")
     parser.add_argument(
+        "-l",
+        "--lights",
+        action="store_true",
+        help="Create a Blender point light for every light VOB (default: False)",
+    )
+    parser.add_argument(
         "-v",
         "--verbosity",
         type=int,
@@ -56,6 +63,7 @@ def main():
     output: Path | None = args["output"]
     scale: float = args["scale"]
     waynet: bool = args["waynet"]
+    lights: bool = args["lights"]
     verbosity: int = args["verbosity"]
 
     path_errors = []
@@ -92,6 +100,8 @@ def main():
 
     if waynet:
         blender_args.append("-w")
+    if lights:
+        blender_args.append("-l")
 
     completed_process = subprocess.run(blender_args)
     if completed_process.returncode != 0:

@@ -138,6 +138,7 @@ def blender_parse_cli() -> Namespace:
         output: Path to the output file
         scale: Scale factor (default: 0.01)
         waynet: Parse waynet (default: False)
+        lights: Create Blender lights for light VOBs (default: False)
         verbosity: Verbosity level (0-3) (default: 0)
     """
     args = sys.argv[sys.argv.index("--") + 1 :]
@@ -151,6 +152,9 @@ def blender_parse_cli() -> Namespace:
     )
     parser.add_argument(
         "-w", "--waynet", action="store_true", help="Parse waynet (default: False)"
+    )
+    parser.add_argument(
+        "-l", "--lights", action="store_true", help="Create Blender lights for light VOBs (default: False)"
     )
     parser.add_argument(
         "-v",
