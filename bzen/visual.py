@@ -604,8 +604,11 @@ def parse_decal_mesh(vob: VirtualObject, scale: float = 0.01) -> Optional[MeshDa
         (7, 6, 4),  # Flipped winding
     ]
 
-    normals = [Vector((0, 0, 1))] * 3 * 2  # 6 normals: 3 per triangle × 2 sides
-    normals += [Vector((0, 0, -1))] * 3 * 2
+    # The quad lies in the XZ plane, so its normals point along Y: the front
+    # triangles (0, 1, 2) and (0, 2, 3) wind towards -Y, the flipped back
+    # triangles towards +Y. 3 loop normals per triangle, 2 triangles per side.
+    normals = [Vector((0, -1, 0))] * 3 * 2
+    normals += [Vector((0, 1, 0))] * 3 * 2
 
     uvs = [
         # Front face
