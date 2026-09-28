@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from argparse import ArgumentParser
 from logging import error
 from pathlib import Path
@@ -74,6 +75,10 @@ def main():
         blender_exe,
         "--background",
         "--factory-startup",
+        # Without this Blender exits with 0 even when the script raises. It must
+        # come before --python because it applies to the scripts that follow it.
+        "--python-exit-code",
+        "1",
         "--python",
         BLENDER_SCRIPT,
         "--",
@@ -90,7 +95,11 @@ def main():
 
     completed_process = subprocess.run(blender_args)
     if completed_process.returncode != 0:
-        raise Exception(completed_process.stderr)
+        log_file = output.with_name(f"{output.stem}.log")
+        sys.exit(
+            f"Conversion failed (Blender exited with code {completed_process.returncode}). "
+            f"See the output above and {log_file} for details."
+        )
 
 
 if __name__ == "__main__":
