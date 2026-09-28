@@ -143,7 +143,7 @@ def main():
 
         info("Parsing world data")
         start_time = perf_counter()
-        wrld_mesh_data = parse_world_mesh(world, 0.01)
+        wrld_mesh_data = parse_world_mesh(world, scale)
         elapsed_time = perf_counter() - start_time
         perf_journal["World mesh parsed in (ms) "] = elapsed_time * 1000
 
