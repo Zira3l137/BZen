@@ -9,7 +9,7 @@ if str(script_dir) not in sys.path:
     sys.path.append(str(script_dir.parent / "venv" / "Lib" / "site-packages"))
     sys.path.append(str(script_dir.parent / ".venv" / "Lib" / "site-packages"))
 
-from logging import error, info
+from logging import error, exception, info
 
 from utils import (
     blender_clean_scene,
@@ -170,8 +170,11 @@ def main():
 
         info("Done.")
 
-    except Exception as e:
-        raise e
+    except Exception:
+        # Record the traceback in the .log file too, not just on the console,
+        # then re-raise so Blender exits non-zero (see --python-exit-code).
+        exception("Conversion failed")
+        raise
 
 
 if __name__ == "__main__":
