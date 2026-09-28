@@ -481,7 +481,9 @@ def parse_world_mesh(wrld: World, scale: float = 0.01) -> MeshData:
                 # same feature_index over and over. Cache by feature_index.
                 if feature_index not in normal_cache:
                     normal = vertex_feature.normal
-                    normal_cache[feature_index] = Vector((normal.x, normal.y, normal.z))
+                    # Same Y/Z swap as the positions above (Gothic is Y-up,
+                    # Blender is Z-up).
+                    normal_cache[feature_index] = Vector((normal.x, normal.z, normal.y))
 
                 face_uvs.append((uv.x, -uv.y))
                 face_normals.append(normal_cache[feature_index])
