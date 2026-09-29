@@ -218,6 +218,45 @@ class MeshData:
         )
 
 
+def drop_degenerate_faces(mesh_data: MeshData) -> Tuple[MeshData, int]:
+    """
+    Return ``mesh_data`` without triangles that use the same vertex more than
+    once, together with the number of triangles dropped.
+
+    The parsers merge vertices by position, so a triangle whose corners
+    have different position indices but identical coordinates ends up with
+    a repeated vertex index, e.g. (5, 5, 9). Blender 4.5 and older silently
+    skipped the zero-length edge such a face implies; from 5.1 on,
+    Mesh.from_pydata keeps it as an edge from a vertex to itself, and
+    entering Edit Mode on the mesh then hangs (and on 5.2
+    normals_split_custom_set can crash). These triangles have no area, so
+    dropping them changes nothing visible.
+
+    Normals and UVs are stored per face corner (three per triangle, in face
+    order) and are filtered along with the faces so they stay aligned.
+    Returns the original object unchanged if nothing had to be dropped.
+    """
+    keep = [len(set(face)) == 3 for face in mesh_data.faces]
+    dropped = keep.count(False)
+    if not dropped:
+        return mesh_data, 0
+
+    def corners(values: list) -> list:
+        return [value for index, value in enumerate(values) if keep[index // 3]] if values else values
+
+    return (
+        MeshData(
+            vertices=mesh_data.vertices,
+            faces=[face for face, k in zip(mesh_data.faces, keep) if k],
+            normals=corners(mesh_data.normals),
+            uvs=corners(mesh_data.uvs),
+            materials=mesh_data.materials,
+            material_indices=[index for index, k in zip(mesh_data.material_indices, keep) if k],
+        ),
+        dropped,
+    )
+
+
 class MissingVisualError(Exception):
     """
     Raised when a visual needed to build a mesh is not in the visuals index,

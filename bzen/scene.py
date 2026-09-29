@@ -7,7 +7,7 @@ import math
 import bpy
 import numpy as np  # numpy is bundled with Blender
 from mathutils import Quaternion, Vector
-from visual import MaterialData, MeshData, VisualLoader, animated_texture_frames
+from visual import MaterialData, MeshData, VisualLoader, animated_texture_frames, drop_degenerate_faces
 from zenkit import Texture
 
 
@@ -433,6 +433,12 @@ def create_obj_from_mesh(
     The object is linked to ``collection``, or to the context collection of
     the active Blender scene if none is given.
     """
+    # Must happen before from_pydata: on Blender 5.1+ a triangle with a
+    # repeated vertex makes Edit Mode hang (see drop_degenerate_faces).
+    mesh_data, dropped = drop_degenerate_faces(mesh_data)
+    if dropped:
+        info(f'Dropped {dropped} degenerate triangle(s) from "{unique_name}"')
+
     mesh = bpy.data.meshes.new(unique_name)
     mesh.from_pydata(mesh_data.vertices, [], mesh_data.faces)  # type: ignore
     # Blender <= 4.0 ignores custom split normals unless Auto Smooth is on.
